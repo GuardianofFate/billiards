@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>캐롬 당구</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+<style>
+/* 레이아웃: 당구장 점수판(위) → 테이블(가운데, 화면의 주인공) → 큐 조작부(아래). 한 가지 어두운 당구장 분위기로 고정. */
+:root {
+  color-scheme: dark;
+  --hall: #15110e;
+  --panel: #221a14;
+  --panel-hi: #2c2219;
+  --line: #43352a;
+  --chalk: #efe8dc;
+  --dim: #a99c8e;
+  --brass: #e3ab3d;
+  --brass-ink: #241a06;
+  --foul: #ea6a52;
+  --cloth: #1d5fa6;
+  --chalk-blue: #3b82c4;
+  --ball-white: #f4f0e6;
+  --ball-yellow: #f2c230;
+  --ball-red: #c8232c;
+  --display: "Black Han Sans", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { background: var(--hall); }
+body {
+  margin: 0;
+  background: var(--hall);
+  color: var(--chalk);
+  font: 400 15px/1.5 var(--body);
+  padding-block: max(20px, env(safe-area-inset-top, 0px)) max(28px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; }
+h1 { font: 400 clamp(30px, 6vw, 44px)/1 var(--display); margin: 0; letter-spacing: .02em; }
+h1 span { color: var(--brass); }
+.rule { margin: 6px 0 0; color: var(--dim); font-size: 14px; max-width: 46ch; }
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; padding: 3px; background: var(--panel); }
+.seg button {
+  font: 400 17px/1 var(--display); letter-spacing: .04em;
+  color: var(--dim); background: none; border: 0; border-radius: 999px; padding: 9px 18px; cursor: pointer;
+}
+.seg button[aria-pressed="true"] { background: var(--brass); color: var(--brass-ink); }
+
+.switch {
+  display: inline-flex; align-items: center; gap: 8px;
+  font: 500 14px/1 var(--body); color: var(--chalk);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 7px 8px 7px 14px; cursor: pointer;
+}
+.switch .track { position: relative; width: 52px; height: 24px; border-radius: 999px; background: var(--hall); border: 1px solid var(--line); transition: background .15s; }
+.switch .track::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: var(--dim); transition: transform .15s, background .15s;
+}
+.switch .track b { position: absolute; inset: 0; display: grid; place-items: center; font: 600 10px/1 var(--body); letter-spacing: .06em; color: var(--dim); padding-left: 18px; }
+.switch[aria-checked="true"] .track { background: var(--brass); border-color: var(--brass); }
+.switch[aria-checked="true"] .track::after { transform: translateX(28px); background: var(--brass-ink); }
+.switch[aria-checked="true"] .track b { color: var(--brass-ink); padding-left: 0; padding-right: 18px; }
+
+.field { display: inline-flex; align-items: center; gap: 8px; font: 500 14px/1 var(--body); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px 5px 14px; }
+.field select { font: 600 14px/1 var(--body); color: var(--chalk); background: var(--hall); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px; }
+.ghost { font: 500 14px/1 var(--body); color: var(--chalk); background: none; border: 1px solid var(--line); border-radius: 999px; padding: 11px 16px; cursor: pointer; }
+.ghost:hover { border-color: var(--dim); }
+
+.net { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; padding: 10px 14px; border: 1px dashed var(--line); border-radius: 10px; }
+.netrow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.net .or { color: var(--dim); font-size: 13px; }
+.net .field input { width: 7ch; font: 600 16px/1 var(--body); letter-spacing: .12em; text-align: center; color: var(--chalk); background: var(--hall); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px; }
+.net .code { font: 500 14px/1 var(--body); display: inline-flex; align-items: baseline; gap: 8px; }
+.net .code b { font: 400 28px/1 var(--display); color: var(--brass); letter-spacing: .14em; font-variant-numeric: tabular-nums; }
+#netStatus { margin: 0; flex: 1 1 240px; min-width: 0; color: var(--dim); font-size: 14px; }
+button:disabled, select:disabled { opacity: .45; cursor: default; }
+.board { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.player { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); min-width: 0; }
+.player.p2 { flex-direction: row-reverse; text-align: right; }
+.player .dot { flex: none; width: 22px; height: 22px; border-radius: 50%; box-shadow: inset -3px -4px 6px rgba(0,0,0,.35); }
+.player.p1 .dot { background: var(--ball-white); }
+.player.p2 .dot { background: var(--ball-yellow); }
+.player .who { flex: 1; min-width: 0; }
+.player .who strong { display: block; font: 600 15px/1.2 var(--body); }
+.player .who small { color: var(--dim); font-size: 12.5px; }
+.player .score { font: 400 44px/1 var(--display); font-variant-numeric: tabular-nums; color: var(--dim); }
+.player.active { border-color: var(--brass); background: var(--panel-hi); }
+.player.active .score { color: var(--brass); }
+.player.active .who small { color: var(--brass); }
+
+.status { display: flex; flex-direction: column; justify-content: center; gap: 4px; text-align: center; padding: 8px 12px; min-width: 0; }
+.status p { margin: 0; font: 500 16px/1.35 var(--body); text-wrap: balance; }
+.status p.foul { color: var(--foul); }
+.status p.good { color: var(--brass); }
+.status small { color: var(--dim); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+
+canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 1088 / 588; border-radius: 14px; touch-action: none; cursor: crosshair; box-shadow: 0 18px 40px rgba(0,0,0,.55); background: #5b3a22; }
+
+.cue { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.tipbox { display: flex; align-items: center; gap: 12px; }
+.tip { position: relative; flex: none; width: 84px; height: 84px; border-radius: 50%; touch-action: none; cursor: crosshair;
+  background: radial-gradient(circle at 35% 30%, #ffffff, var(--ball-white) 45%, #b9b2a2); box-shadow: 0 4px 10px rgba(0,0,0,.5); }
+.tip::before, .tip::after { content: ""; position: absolute; background: rgba(0,0,0,.14); }
+.tip::before { left: 50%; top: 10%; bottom: 10%; width: 1px; }
+.tip::after { top: 50%; left: 10%; right: 10%; height: 1px; }
+.tipdot { position: absolute; left: 50%; top: 50%; width: 16px; height: 16px; border-radius: 50%; background: var(--chalk-blue); border: 2px solid #123f70; transform: translate(-50%, -50%); pointer-events: none; z-index: 1; }
+.tipinfo { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 9em; }
+.tipinfo strong { font: 600 14px/1 var(--body); }
+.tipinfo span { color: var(--brass); font-size: 13.5px; }
+.ghost.small { padding: 6px 12px; font-size: 12.5px; }
+.power { flex: 1 1 260px; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.power label { font: 600 14px/1 var(--body); }
+.power input { flex: 1; min-width: 0; accent-color: var(--brass); height: 28px; }
+.power output { font: 400 22px/1 var(--display); color: var(--brass); width: 3ch; text-align: right; font-variant-numeric: tabular-nums; }
+.shoot { font: 400 22px/1 var(--display); letter-spacing: .08em; color: var(--brass-ink); background: var(--brass); border: 0; border-radius: 10px; padding: 14px 40px; cursor: pointer; }
+.shoot:disabled { background: var(--line); color: var(--dim); cursor: default; }
+.hint { flex: 1 1 100%; margin: 0; color: var(--dim); font-size: 13px; }
+kbd { font: 600 12px/1 var(--body); border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; color: var(--chalk); }
+
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--chalk); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .board { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .status { grid-column: 1 / -1; grid-row: 2; }
+  .player { padding: 8px 12px; }
+  .player .score { font-size: 34px; }
+  .shoot { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) { .switch .track, .switch .track::after { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>캐롬 <span>당구</span></h1>
+      <p class="rule" id="rule"></p>
+    </div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="게임 종류">
+        <button type="button" id="mode3" aria-pressed="true">3구</button>
+        <button type="button" id="mode4" aria-pressed="false">4구</button>
+      </div>
+      <div class="seg" role="group" aria-label="대결 상대">
+        <button type="button" id="vsFriend" aria-pressed="true">친구 대결</button>
+        <button type="button" id="vsAI" aria-pressed="false">AI 대결</button>
+        <button type="button" id="vsLocal" aria-pressed="false">한 화면</button>
+      </div>
+      <label class="field" id="levelField" for="level" hidden>AI 난이도
+        <select id="level">
+          <option value="easy">쉬움</option>
+          <option value="normal" selected>보통</option>
+          <option value="hard">어려움</option>
+        </select>
+      </label>
+      <button type="button" class="switch" id="aimSwitch" role="switch" aria-checked="true">조준선 <span class="track"><b>ON</b></span></button>
+      <button type="button" class="switch" id="c3Switch" role="switch" aria-checked="false">3쿠션 규칙 <span class="track"><b>OFF</b></span></button>
+      <button type="button" class="switch" id="soundSwitch" role="switch" aria-checked="true">소리 <span class="track"><b>ON</b></span></button>
+      <label class="field" for="target">목표
+        <select id="target">
+          <option value="5">5점</option>
+          <option value="10" selected>10점</option>
+          <option value="15">15점</option>
+          <option value="20">20점</option>
+        </select>
+      </label>
+      <button type="button" class="ghost" id="newGame">새 게임</button>
+    </div>
+  </header>
+
+  <section class="net" id="netBar" aria-label="온라인 친구 대결" hidden>
+    <div class="netrow" id="netLobby">
+      <button type="button" class="ghost" id="roomCreate">방 만들기</button>
+      <span class="or">또는</span>
+      <label class="field" for="roomCode">방 코드
+        <input id="roomCode" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
+      </label>
+      <button type="button" class="ghost" id="roomJoin">들어가기</button>
+    </div>
+    <div class="netrow" id="netRoom" hidden>
+      <span class="code">방 코드 <b id="netCode">0000</b></span>
+      <button type="button" class="ghost" id="roomLeave">방 나가기</button>
+    </div>
+    <p id="netStatus" aria-live="polite"></p>
+  </section>
+
+  <section class="board" aria-label="점수판">
+    <div class="player p1 active" id="p1">
+      <span class="dot"></span>
+      <span class="who"><strong id="p1name">1P · 흰 공</strong><small id="p1s">치는 중</small></span>
+      <span class="score" id="s1">0</span>
+    </div>
+    <div class="status">
+      <p id="msg" aria-live="polite"></p>
+      <small id="shotInfo"></small>
+    </div>
+    <div class="player p2" id="p2">
+      <span class="dot"></span>
+      <span class="who"><strong id="p2name">2P · 노란 공</strong><small id="p2s">대기</small></span>
+      <span class="score" id="s2">0</span>
+    </div>
+  </section>
+
+  <canvas id="table" aria-label="당구대. 드래그해서 조준합니다."></canvas>
+
+  <section class="cue" aria-label="큐 조작">
+    <div class="tipbox">
+      <div class="tip" id="tip" aria-label="당점. 수구의 어디를 칠지 눌러서 고릅니다."><span class="tipdot" id="tipDot"></span></div>
+      <div class="tipinfo">
+        <strong>당점</strong>
+        <span id="tipName">가운데 (무회전)</span>
+        <button type="button" class="ghost small" id="tipReset">가운데로</button>
+      </div>
+    </div>
+    <div class="power">
+      <label for="power">힘</label>
+      <input type="range" id="power" min="5" max="100" step="1" value="50">
+      <output id="powerOut" for="power">50</output>
+    </div>
+    <button type="button" class="shoot" id="shoot">샷</button>
+    <p class="hint">테이블을 누르거나 드래그해 조준합니다. <kbd>←</kbd> <kbd>→</kbd> 미세 조준 (<kbd>Shift</kbd>와 함께 더 세밀하게), <kbd>↑</kbd> <kbd>↓</kbd> 힘, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 당점, <kbd>Space</kbd> 샷. 당점을 위로 두면 밀어치기, 아래로 두면 끌어치기, 좌우로 두면 쿠션에서 꺾이는 회전이 걸립니다. 조준선은 무회전 기준입니다.</p>
+  </section>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function () {
+  'use strict';
+  // ---------- 상수 ----------
+  var TW = 1000, TH = 500, RAIL = 44, CW = TW + RAIL * 2, CH = TH + RAIL * 2;
+  var DT = 1 / 480, E_BALL = 0.96, E_CUSHION = 0.82;
+  var COLORS = { w: ['#ffffff', '#f4f0e6', '#b9b2a2'], y: ['#fff3b0', '#f2c230', '#a97c0c'], r: ['#ff8a80', '#c8232c', '#6f0d14'] };
+  var NAMES = ['1P', '2P'], CUE = ['w', 'y'];
+
+  // ---------- 상태 ----------
+  var S = { mode: 3, aimLine: true, threeC: false, sound: true, target: 10,
+            turn: 0, scores: [0, 0], balls: [], angle: 0, power: 50,
+            moving: false, shot: null, over: false, R: 10.8,
+            vsAI: false, level: 'normal', aiToken: 0, humanPower: 50,
+            online: true, gid: '', n: 0, shotMine: true,
+            tip: { x: 0, y: 0 } }; // 당점: x 오른쪽(+), y 위쪽(+), 반지름 1 안
+  // 온라인 대결: 같은 링크를 연 사람끼리 presence(각자의 현재 상태)만으로 샷과 결과를 맞춘다.
+  var NET = { room: null, code: null, seat: 0, opp: null, confirmed: 0, fresh: false, joining: false, connected: false, note: '' };
+  var LIVE = true; // false면 AI가 머릿속으로 샷을 시뮬레이션하는 중
+  try {
+    var saved = JSON.parse(localStorage.getItem('carom-prefs') || '{}');
+    if (saved.mode === 3 || saved.mode === 4) S.mode = saved.mode;
+    if (typeof saved.aimLine === 'boolean') S.aimLine = saved.aimLine;
+    if (typeof saved.threeC === 'boolean') S.threeC = saved.threeC;
+    if (typeof saved.sound === 'boolean') S.sound = saved.sound;
+    if ([5, 10, 15, 20].indexOf(saved.target) >= 0) S.target = saved.target;
+    if (typeof saved.vsAI === 'boolean') S.vsAI = saved.vsAI;
+    if (typeof saved.online === 'boolean') S.online = saved.online;
+    if (S.vsAI) S.online = false;
+    if (['easy', 'normal', 'hard'].indexOf(saved.level) >= 0) S.level = saved.level;
+  } catch (e) {}
+  function savePrefs() {
+    try { localStorage.setItem('carom-prefs', JSON.stringify({ mode: S.mode, aimLine: S.aimLine, threeC: S.threeC, sound: S.sound, target: S.target, vsAI: S.vsAI, online: S.online, level: S.level })); } catch (e) {}
+  }
+  function aiTurnNow() { return S.vsAI && S.turn === 1; }
+  function canAct() {
+    if (S.vsAI) return S.turn === 0;
+    if (S.online) return !!(NET.code && NET.opp && S.turn === NET.seat);
+    return true;
+  }
+  function inRoom() { return S.online && !!NET.code; }
+
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('table'), ctx = cv.getContext('2d'), scale = 1;
+
+  // ---------- 게임 진행 ----------
+  // qx,qy: 밀기/끌기 회전이 아직 속도로 바뀌지 않은 몫, side: 좌우 회전, rel: 첫 충돌 뒤 회전이 풀리기 시작했는지
+  function ball(id, x, y) { return { id: id, kind: id.charAt(0), x: x, y: y, vx: 0, vy: 0, qx: 0, qy: 0, side: 0, rel: false }; }
+  function setTip(x, y) {
+    var d = Math.hypot(x, y); if (d > 1) { x /= d; y /= d; }
+    S.tip = { x: Math.abs(x) < 0.06 ? 0 : x, y: Math.abs(y) < 0.06 ? 0 : y };
+    showTip();
+  }
+  function showTip() {
+    var t = S.tip, parts = [];
+    $('tipDot').style.left = (50 + t.x * 38) + '%'; $('tipDot').style.top = (50 - t.y * 38) + '%';
+    if (t.y > 0.2) parts.push('위 (밀어치기)'); else if (t.y < -0.2) parts.push('아래 (끌어치기)');
+    if (t.x > 0.2) parts.push('오른쪽 회전'); else if (t.x < -0.2) parts.push('왼쪽 회전');
+    $('tipName').textContent = parts.length ? parts.join(' + ') : '가운데 (무회전)';
+  }
+  function cueBall() { return S.balls[S.turn]; }
+  function isTarget(b) {
+    if (b.id === CUE[S.turn]) return false;
+    return S.mode === 3 ? true : b.kind === 'r';
+  }
+  function autoAim() {
+    var c = cueBall(), best = null, bd = Infinity;
+    S.balls.forEach(function (b) {
+      if (!isTarget(b)) return;
+      var d = Math.hypot(b.x - c.x, b.y - c.y);
+      if (d < bd) { bd = d; best = b; }
+    });
+    if (best) S.angle = Math.atan2(best.y - c.y, best.x - c.x);
+  }
+  function newGame() {
+    S.R = S.mode === 4 ? 11.5 : 10.8;
+    S.turn = 0; S.scores = [0, 0]; S.moving = false; S.over = false; S.shot = null;
+    S.aiToken++; NAMES[1] = S.vsAI ? 'AI' : '2P';
+    S.gid = Math.random().toString(36).slice(2, 10); S.n = 0; NET.confirmed = 0;
+    if (S.mode === 3) {
+      S.balls = [ball('w', 250, 314), ball('y', 250, 250), ball('r1', 750, 250)];
+    } else {
+      S.balls = [ball('w', 125, 296), ball('y', 875, 250), ball('r1', 250, 250), ball('r2', 750, 250)];
+    }
+    autoAim();
+    say('1P(흰 공)부터 칩니다.', '');
+    $('shotInfo').textContent = '먼저 ' + S.target + '점을 내면 이깁니다.';
+    if (inRoom()) publish({ shot: null, aim: null });
+    syncUI();
+  }
+  function say(text, cls) { var m = $('msg'); m.textContent = text; m.className = cls || ''; }
+  function syncUI() {
+    $('mode3').setAttribute('aria-pressed', S.mode === 3);
+    $('mode4').setAttribute('aria-pressed', S.mode === 4);
+    setSwitch('aimSwitch', S.aimLine); setSwitch('c3Switch', S.threeC); setSwitch('soundSwitch', S.sound);
+    $('c3Switch').hidden = S.mode !== 3;
+    $('vsFriend').setAttribute('aria-pressed', S.online);
+    $('vsAI').setAttribute('aria-pressed', S.vsAI);
+    $('vsLocal').setAttribute('aria-pressed', !S.online && !S.vsAI);
+    $('levelField').hidden = !S.vsAI;
+    $('level').value = S.level;
+    $('p1name').textContent = '1P · 흰 공' + (inRoom() && NET.seat === 0 ? ' (나)' : '');
+    $('p2name').textContent = NAMES[1] + ' · 노란 공' + (inRoom() && NET.seat === 1 ? ' (나)' : '');
+    var guest = inRoom() && NET.seat !== 0; // 설정과 새 게임은 방의 1P만 바꾼다
+    ['mode3', 'mode4', 'c3Switch', 'target', 'newGame'].forEach(function (id) { $(id).disabled = guest; });
+    netUI();
+    $('power').disabled = !canAct() && !S.over;
+    $('power').value = S.power;
+    $('target').value = String(S.target);
+    $('rule').textContent = S.mode === 3
+      ? (S.threeC ? '3구 · 수구가 쿠션을 3번 이상 맞힌 뒤 두 번째 공을 맞히면 1점.' : '3구 · 내 수구로 나머지 두 공을 모두 맞히면 1점.')
+      : '4구 · 빨간 공 두 개를 모두 맞히면 1점. 상대 수구를 맞히거나 헛치면 1점을 잃습니다.';
+    $('s1').textContent = S.scores[0]; $('s2').textContent = S.scores[1];
+    $('p1').classList.toggle('active', S.turn === 0 && !S.over);
+    $('p2').classList.toggle('active', S.turn === 1 && !S.over);
+    $('p1s').textContent = S.over ? (S.scores[0] >= S.target ? '승리' : '패배') : (S.turn === 0 ? '치는 중' : '대기');
+    $('p2s').textContent = S.over ? (S.scores[1] >= S.target ? '승리' : '패배') : (S.turn === 1 ? '치는 중' : '대기');
+    $('shoot').disabled = S.moving || S.over || !canAct();
+    $('powerOut').textContent = S.power;
+  }
+  function setSwitch(id, on) {
+    var el = $(id); el.setAttribute('aria-checked', on ? 'true' : 'false');
+    el.querySelector('b').textContent = on ? 'ON' : 'OFF';
+  }
+  function shotInfo() {
+    if (!S.shot || !LIVE) return;
+    $('shotInfo').textContent = '이번 샷 · 쿠션 ' + S.shot.cushions + '번 · 맞힌 공 ' + S.shot.hits.length + '개';
+  }
+
+  function speedOf(p) { return 150 + (p / 100) * 2250; }
+  function applySpin(c, angle, speed, tip) {
+    c.qx = Math.cos(angle) * speed * tip.y * 0.55; c.qy = Math.sin(angle) * speed * tip.y * 0.55;
+    c.side = tip.x * speed * 0.45; c.rel = false;
+  }
+  function shoot(fromAI, remote, remoteTip) {
+    if (S.moving || S.over) return;
+    if (fromAI !== true && remote !== true && !canAct()) return;
+    S.shotMine = remote !== true;
+    var tip = remote === true ? remoteTip : (fromAI === true ? { x: 0, y: 0 } : S.tip);
+    if (inRoom() && S.shotMine) {
+      publish({ aim: null, shot: { gid: S.gid, n: S.n + 1, a: S.angle, p: S.power, ex: tip.x, ey: tip.y,
+        b: S.balls.map(function (b) { return [b.x, b.y]; }) } });
+    }
+    initAudio();
+    var c = cueBall(), speed = speedOf(S.power);
+    S.balls.forEach(function (b) { b.qx = b.qy = b.side = 0; b.rel = false; });
+    c.vx = Math.cos(S.angle) * speed; c.vy = Math.sin(S.angle) * speed;
+    applySpin(c, S.angle, speed, tip);
+    S.shot = { hits: [], cushions: 0, cushAtSecond: null };
+    S.moving = true;
+    say('공이 구르는 중…', '');
+    shotInfo(); syncUI();
+    click(900, 0.05, 0.25);
+  }
+
+  function resolveShot() {
+    S.n++;
+    var h = S.shot.hits, opp = CUE[1 - S.turn], me = NAMES[S.turn];
+    var gain = 0, keep = false, text, cls = '';
+    if (S.mode === 3) {
+      if (h.length >= 2 && (!S.threeC || S.shot.cushAtSecond >= 3)) { gain = 1; keep = true; text = me + ' 득점!'; cls = 'good'; }
+      else if (h.length >= 2) text = '두 공을 맞혔지만 쿠션이 ' + S.shot.cushAtSecond + '번뿐이었습니다.';
+      else if (h.length === 1) text = '공 하나만 맞혔습니다.';
+      else text = '공을 맞히지 못했습니다.';
+    } else {
+      if (h.indexOf(opp) >= 0) { gain = -1; text = '파울 · 상대 수구를 맞혔습니다.'; cls = 'foul'; }
+      else if (h.length === 0) { gain = -1; text = '파울 · 아무 공도 맞히지 못했습니다.'; cls = 'foul'; }
+      else if (h.length === 2) { gain = 1; keep = true; text = me + ' 득점!'; cls = 'good'; }
+      else text = '빨간 공 하나만 맞혔습니다.';
+    }
+    if (gain < 0) {
+      if (S.scores[S.turn] > 0) { S.scores[S.turn] -= 1; text += ' ' + me + ' −1점.'; }
+    } else S.scores[S.turn] += gain;
+
+    if (S.scores[S.turn] >= S.target) {
+      S.over = true;
+      say(me + ' 승리! ' + S.target + '점을 먼저 냈습니다. 새 게임을 눌러 다시 시작하세요.', 'good');
+    } else {
+      if (keep) text += ' 한 번 더 칩니다.';
+      else { S.turn = 1 - S.turn; text += ' ' + NAMES[S.turn] + '(' + (S.turn === 0 ? '흰 공' : '노란 공') + ') 차례입니다.'; }
+      say(text, cls);
+      autoAim();
+      if (S.vsAI && S.turn === 0) S.power = S.humanPower;
+    }
+    if (inRoom()) {
+      if (S.turn === NET.seat) S.power = S.humanPower;
+      if (S.shotMine) { NET.confirmed = S.n; publish(); }
+    }
+    syncUI();
+    aiTurn();
+    netSync();
+  }
+
+  // ---------- 온라인 ----------
+  var roomPromise = null;
+  function getRoom() {
+    if (roomPromise) return roomPromise;
+    if (!window.claude || typeof window.claude.use !== 'function') return Promise.resolve(null);
+    roomPromise = Promise.resolve(window.claude.use('room')).catch(function () { return null; });
+    return roomPromise;
+  }
+  // Claude 밖(GitHub Pages 등)에서는 PeerJS로 두 브라우저를 직접 잇는다. 위의 room과 같은 모양의 객체를 돌려줘서 나머지 코드는 그대로 쓴다.
+  function makePeerRoom() {
+    var P = window.Peer, peer = null, conn = null, role = '', me = {}, opp = null, myId = 'me';
+    var pl = [], cl = [], lastC = null;
+    function pid(code) { return 'carom4-billiards-' + code; }
+    function isConn() { return role === 'host' ? !!(peer && peer.open && !peer.disconnected) : !!(conn && conn.open); }
+    function peers() {
+      var a = [{ peer: myId, by: null, isMe: true, sameTab: true, kind: 'viewer', guest: false, presence: me, updatedAt: 0 }];
+      if (conn && conn.open && opp) a.push({ peer: String(conn.peer), by: null, isMe: false, sameTab: false, kind: 'viewer', guest: false, presence: opp, updatedAt: 0 });
+      return a;
+    }
+    function fireP() { pl.slice().forEach(function (f) { try { f({ peers: peers(), joined: [], left: [], updated: [] }); } catch (e) {} }); }
+    function fireC() { var c = isConn(); if (c === lastC) return; lastC = c; cl.slice().forEach(function (f) { try { f(c); } catch (e) {} }); }
+    function bind(c, onFirst) {
+      conn = c;
+      c.on('data', function (d) {
+        if (!d || d.t !== 'p' || !d.p || typeof d.p !== 'object' || JSON.stringify(d.p).length > 8000) return;
+        var first = !opp; opp = d.p; if (first && onFirst) onFirst(); fireP();
+      });
+      c.on('close', function () { if (conn === c) { conn = null; opp = null; fireP(); fireC(); } });
+      c.on('error', function () {});
+      var go = function () { try { c.send({ t: 'p', p: me }); } catch (e) {} fireC(); };
+      if (c.open) go(); else c.on('open', go);
+    }
+    return {
+      host: function (code) {
+        return new Promise(function (res, rej) {
+          role = 'host'; var ok = false;
+          peer = new P(pid(code), { debug: 0 });
+          peer.on('open', function (id) { myId = id; ok = true; fireC(); res(); });
+          peer.on('error', function (e) { if (!ok) rej(e); });
+          peer.on('disconnected', function () { fireC(); try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) {} });
+          peer.on('connection', function (c) {
+            if (conn && conn.open) { c.on('open', function () { c.close(); }); return; }
+            bind(c);
+          });
+        });
+      },
+      dial: function (code) {
+        return new Promise(function (res, rej) {
+          role = 'guest'; var done = false, t;
+          var fail = function (e) { if (!done) { done = true; clearTimeout(t); rej(e || { type: 'timeout' }); } };
+          peer = new P(undefined, { debug: 0 });
+          peer.on('error', fail);
+          t = setTimeout(function () { fail({ type: 'timeout' }); }, 15000);
+          peer.on('open', function (id) {
+            myId = id;
+            var c = peer.connect(pid(code), { reliable: true, serialization: 'json' });
+            bind(c, function () { if (!done) { done = true; clearTimeout(t); res(); } });
+          });
+        });
+      },
+      presence: function (patch) {
+        for (var k in patch) { if (patch[k] === null) delete me[k]; else me[k] = patch[k]; }
+        if (conn && conn.open) { try { conn.send({ t: 'p', p: me }); } catch (e) {} }
+        return Promise.resolve();
+      },
+      peers: peers,
+      onPeers: function (f) { pl.push(f); return function () { pl = pl.filter(function (x) { return x !== f; }); }; },
+      onConnection: function (f) { cl.push(f); lastC = isConn(); setTimeout(function () { try { f(lastC); } catch (e) {} }, 0); return function () { cl = cl.filter(function (x) { return x !== f; }); }; },
+      connected: isConn,
+      close: function () {
+        pl = []; cl = [];
+        try { if (conn) conn.close(); } catch (e) {}
+        try { if (peer) peer.destroy(); } catch (e) {}
+        conn = null; opp = null;
+      }
+    };
+  }
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  function clampN(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  function packState() {
+    return { gid: S.gid, n: S.n, m: S.mode, c: S.threeC ? 1 : 0, g: S.target, t: S.turn,
+             s: S.scores.slice(), o: S.over ? 1 : 0, b: S.balls.map(function (b) { return [b.x, b.y]; }) };
+  }
+  function validBalls(b, mode) {
+    return Array.isArray(b) && b.length === (mode === 3 ? 3 : 4) &&
+      b.every(function (p) { return Array.isArray(p) && num(p[0]) && num(p[1]); });
+  }
+  function validState(st) {
+    return !!st && typeof st.gid === 'string' && st.gid.length <= 16 && Number.isInteger(st.n) && st.n >= 0 &&
+      (st.m === 3 || st.m === 4) && validBalls(st.b, st.m) && (st.t === 0 || st.t === 1) &&
+      Array.isArray(st.s) && st.s.length === 2 && st.s.every(function (v) { return Number.isInteger(v) && v >= 0 && v < 100; }) &&
+      [5, 10, 15, 20].indexOf(st.g) >= 0;
+  }
+  function publish(extra) {
+    if (!NET.room || !NET.code) return;
+    var p = { k: NET.code, seat: NET.seat }, key;
+    if (!NET.fresh) p.st = packState();
+    if (extra) for (key in extra) p[key] = extra[key];
+    try { NET.room.presence(p).catch(function () {}); } catch (e) {}
+  }
+  function publishAim() {
+    if (!inRoom() || !NET.room || S.moving || S.turn !== NET.seat) return;
+    try { NET.room.presence({ aim: { a: S.angle, p: S.power } }).catch(function () {}); } catch (e) {}
+  }
+  function codePeers(code) {
+    if (!NET.room) return [];
+    return NET.room.peers().filter(function (p) {
+      return !p.sameTab && p.kind === 'viewer' && p.presence && p.presence.k === code &&
+        (p.presence.seat === 0 || p.presence.seat === 1);
+    });
+  }
+  function applyState(st) {
+    var quiet = st.gid === S.gid && st.n === S.n && st.t === S.turn && st.s[0] === S.scores[0] && st.s[1] === S.scores[1];
+    S.gid = st.gid; S.n = st.n; NET.confirmed = st.n;
+    S.mode = st.m; S.threeC = !!st.c; S.target = st.g; S.R = S.mode === 4 ? 11.5 : 10.8;
+    var ids = S.mode === 3 ? ['w', 'y', 'r1'] : ['w', 'y', 'r1', 'r2'];
+    S.balls = ids.map(function (id, i) { return ball(id, clampN(st.b[i][0], S.R, TW - S.R), clampN(st.b[i][1], S.R, TH - S.R)); });
+    S.turn = st.t; S.scores = st.s.slice(); S.over = !!st.o; S.moving = false; S.shot = null;
+    if (!quiet) {
+      if (S.over) say(NAMES[S.scores[0] >= S.target ? 0 : 1] + ' 승리! ' + S.target + '점을 먼저 냈습니다.', 'good');
+      else say(NAMES[S.turn] + '(' + (S.turn === 0 ? '흰 공' : '노란 공') + ') 차례입니다.', '');
+      $('shotInfo').textContent = '먼저 ' + S.target + '점을 내면 이깁니다.';
+      autoAim();
+    }
+    if (S.turn === NET.seat) S.power = S.humanPower;
+    NET.fresh = false;
+    publish();
+  }
+  function netSync() {
+    if (!inRoom() || !NET.room) return;
+    var all = NET.room.peers(), me = null, i;
+    for (i = 0; i < all.length; i++) if (all[i].sameTab) me = all[i];
+    var others = codePeers(NET.code);
+    var clash = others.filter(function (p) { return p.presence.seat === NET.seat; });
+    if (me && clash.some(function (p) { return p.peer < me.peer; })) {
+      if (others.some(function (p) { return p.presence.seat === 1 - NET.seat; })) { leaveRoom('이 방에는 이미 두 명이 들어와 있습니다.'); return; }
+      NET.seat = 1 - NET.seat; publish();
+    }
+    var opps = others.filter(function (p) { return p.presence.seat === 1 - NET.seat; })
+      .sort(function (a, b) { return a.peer < b.peer ? -1 : 1; });
+    NET.opp = opps[0] || null;
+    if (NET.opp && !S.moving) {
+      var pr = NET.opp.presence, st = pr.st, sh = pr.shot;
+      if (validState(st)) {
+        var adopt = st.gid !== S.gid ? (NET.seat === 1 || NET.fresh) : st.n > NET.confirmed;
+        if (adopt) applyState(st);
+      }
+      var oppTurn = S.turn === 1 - NET.seat && !S.over;
+      if (oppTurn && sh && sh.gid === S.gid && sh.n === S.n + 1 && num(sh.a) && num(sh.p) && validBalls(sh.b, S.mode)) {
+        S.balls.forEach(function (b, j) { b.x = clampN(sh.b[j][0], S.R, TW - S.R); b.y = clampN(sh.b[j][1], S.R, TH - S.R); b.vx = b.vy = 0; });
+        S.angle = sh.a; S.power = clampN(sh.p, 5, 100);
+        var rx = num(sh.ex) ? sh.ex : 0, ry = num(sh.ey) ? sh.ey : 0, rd = Math.hypot(rx, ry);
+        if (rd > 1) { rx /= rd; ry /= rd; }
+        shoot(false, true, { x: rx, y: ry });
+      } else if (oppTurn && pr.aim && num(pr.aim.a) && num(pr.aim.p)) {
+        S.angle = pr.aim.a; S.power = clampN(pr.aim.p, 5, 100);
+      }
+    }
+    syncUI();
+  }
+  function enterRoom(code, creator) {
+    if (NET.joining) return;
+    NET.joining = true; NET.note = '연결하는 중…'; netUI();
+    getRoom().then(function (room) {
+      if (!room && window.Peer) room = makePeerRoom();
+      if (!room) {
+        NET.joining = false;
+        NET.note = '이 화면에서는 온라인 연결을 쓸 수 없습니다. Claude에 로그인한 상태로, 공유받은 링크에서 열어 주세요.';
+        netUI(); return;
+      }
+      if (!NET.room) {
+        NET.room = room;
+        room.onPeers(function () { netSync(); }, netDead);
+        room.onConnection(function (c) { NET.connected = !!c; netUI(); }, netDead);
+        NET.connected = !!room.connected();
+      }
+      var finish = function () {
+        NET.joining = false;
+        if (!S.online) return;
+        var others = codePeers(code), seats = others.map(function (p) { return p.presence.seat; });
+        if (seats.indexOf(0) >= 0 && seats.indexOf(1) >= 0) { NET.note = '이 방에는 이미 두 명이 들어와 있습니다.'; netUI(); return; }
+        NET.code = code; NET.note = '';
+        NET.seat = seats.indexOf(0) >= 0 ? 1 : 0;
+        NET.fresh = others.length > 0; // 먼저 와 있던 사람의 게임을 이어받는다
+        try { localStorage.setItem('carom-code', code); } catch (e) {}
+        newGame();
+        netSync();
+      };
+      if (!room.host) { if (creator) finish(); else setTimeout(finish, 2000); return; }
+      (creator ? room.host(code) : room.dial(code)).then(function () { finish(); }, function (err) {
+        var t = err && err.type;
+        try { room.close(); } catch (e) {}
+        NET.room = null; NET.joining = false;
+        if (creator && t === 'unavailable-id' && (NET.tries = (NET.tries || 0) + 1) < 6) { enterRoom(String(1000 + Math.floor(Math.random() * 9000)), true); return; }
+        NET.note = t === 'peer-unavailable' ? '그 코드의 방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'
+          : '연결하지 못했습니다. 인터넷 연결을 확인하고 잠시 뒤 다시 시도해 주세요.';
+        netUI();
+      });
+    });
+  }
+  function leaveRoom(note) {
+    if (NET.room && NET.code) { try { NET.room.presence({ k: null, seat: null, st: null, shot: null, aim: null }).catch(function () {}); } catch (e) {} }
+    if (NET.room && NET.room.close) { try { NET.room.close(); } catch (e) {} NET.room = null; }
+    NET.code = null; NET.opp = null; NET.fresh = false; NET.note = note || '';
+    syncUI();
+  }
+  function netDead() {
+    NET.room = null; NET.code = null; NET.opp = null; NET.connected = false;
+    NET.note = '온라인 연결을 쓸 수 없게 됐습니다. 페이지를 새로 열어 다시 시도해 주세요.';
+    roomPromise = Promise.resolve(null);
+    syncUI();
+  }
+  function netUI() {
+    $('netBar').hidden = !S.online;
+    if (!S.online) return;
+    var joined = !!NET.code, t;
+    $('netLobby').hidden = joined; $('netRoom').hidden = !joined;
+    $('roomCreate').disabled = $('roomJoin').disabled = NET.joining;
+    if (joined) {
+      $('netCode').textContent = NET.code;
+      if (!NET.connected) t = NET.room && NET.room.host ? '친구와의 연결이 끊겼습니다. 방 나가기를 누르고 다시 들어와 주세요.' : '연결이 끊겼습니다. 다시 연결하는 중…';
+      else if (!NET.opp) t = '친구를 기다리는 중입니다. 친구가 같은 링크를 열고 이 코드로 들어오면 시작합니다.';
+      else t = '친구와 연결됐습니다. 나는 ' + (NET.seat === 0 ? '1P(흰 공)' : '2P(노란 공)') + '입니다.' + (NET.seat === 0 ? '' : ' 설정과 새 게임은 1P가 정합니다.');
+    } else t = NET.note || '방을 만들어 코드를 친구에게 알려 주거나, 친구가 알려 준 코드로 들어가세요.';
+    $('netStatus').textContent = t;
+  }
+  function setVs(kind) {
+    var wasOnline = S.online;
+    S.online = kind === 'online'; S.vsAI = kind === 'ai';
+    if (wasOnline && !S.online) leaveRoom('');
+    if (S.online) getRoom();
+    savePrefs(); newGame();
+  }
+
+  // ---------- AI ----------
+  // 후보 샷을 실제 물리로 미리 굴려 보고 가장 좋은 결과를 고른다. 난이도는 후보 수와 조준 오차로 조절.
+  var LEVELS = { easy: { n: 30, noise: 2.2 }, normal: { n: 120, noise: 0.7 }, hard: { n: 420, noise: 0.12 } };
+  function simulate(angle, power) {
+    var keep = { balls: S.balls, shot: S.shot, moving: S.moving };
+    S.balls = keep.balls.map(function (b) { return ball(b.id, b.x, b.y); });
+    S.shot = { hits: [], cushions: 0, cushAtSecond: null };
+    var c = S.balls[S.turn], sp = speedOf(power), n = 0;
+    c.vx = Math.cos(angle) * sp; c.vy = Math.sin(angle) * sp;
+    LIVE = false; S.moving = true;
+    while (S.moving && n++ < 6000) step(DT);
+    var out = S.shot;
+    LIVE = true; S.balls = keep.balls; S.shot = keep.shot; S.moving = keep.moving;
+    return out;
+  }
+  function rate(shot) {
+    var h = shot.hits;
+    if (S.mode === 3) {
+      if (h.length >= 2 && (!S.threeC || shot.cushAtSecond >= 3)) return 100;
+      return h.length * 10 + (S.threeC && h.length >= 2 ? shot.cushAtSecond * 5 : 0);
+    }
+    if (h.indexOf(CUE[1 - S.turn]) >= 0 || h.length === 0) return -50;
+    return h.length === 2 ? 100 : 10;
+  }
+  function aiPlan() {
+    var lv = LEVELS[S.level], c = cueBall(), targets = S.balls.filter(isTarget), best = null;
+    var powers = [30, 45, 60, 80, 100];
+    for (var i = 0; i < lv.n; i++) {
+      var a;
+      if (i % 3 !== 2) {
+        var t = targets[Math.floor(Math.random() * targets.length)];
+        var d = Math.hypot(t.x - c.x, t.y - c.y), spread = Math.asin(Math.min(1, 2 * S.R / d));
+        a = Math.atan2(t.y - c.y, t.x - c.x) + (Math.random() * 2 - 1) * spread * 0.98;
+      } else a = Math.random() * Math.PI * 2;
+      var p = powers[Math.floor(Math.random() * powers.length)];
+      var sc = rate(simulate(a, p)) + Math.random();
+      if (!best || sc > best.sc) best = { a: a, p: p, sc: sc };
+    }
+    best.a += (Math.random() * 2 - 1) * lv.noise * Math.PI / 180;
+    return best;
+  }
+  function aiTurn() {
+    if (!aiTurnNow() || S.over || S.moving) return;
+    var token = ++S.aiToken;
+    setTimeout(function () {
+      if (token !== S.aiToken) return;
+      var plan = aiPlan();
+      S.humanPower = S.power; S.angle = plan.a; S.power = plan.p; syncUI();
+      setTimeout(function () { if (token === S.aiToken) shoot(true); }, 900);
+    }, 600);
+  }
+
+  // ---------- 물리 ----------
+  function recordHit(other) {
+    var s = S.shot;
+    if (s.hits.indexOf(other.id) < 0) {
+      s.hits.push(other.id);
+      if (s.hits.length === 2 && s.cushAtSecond === null) s.cushAtSecond = s.cushions;
+      shotInfo();
+    }
+  }
+  // 쿠션에 닿을 때: 좌우 회전은 공이 가던 방향 기준 오른쪽(+)/왼쪽(−)으로 튀는 각을 바꾸고, 밀기/끌기 회전은 대부분 죽는다
+  function cushionSpin(b, tx, ty, dx, dy) {
+    var sp = Math.hypot(dx, dy);
+    if (b.side !== 0 && sp > 0) {
+      var rt = (-dy / sp) * tx + (dx / sp) * ty;
+      b.vx += b.side * 0.7 * rt * tx; b.vy += b.side * 0.7 * rt * ty;
+      b.side *= 0.5;
+    }
+    b.qx *= 0.3; b.qy *= 0.3;
+    if (tx === 0) b.qx = -b.qx; else b.qy = -b.qy;
+    b.rel = true;
+  }
+  function step(dt) {
+    var R = S.R, cueId = CUE[S.turn], bs = S.balls, i, j, b, any = false;
+    for (i = 0; i < bs.length; i++) {
+      b = bs[i];
+      if (b.qx !== 0 || b.qy !== 0) {
+        if (b.rel) { // 충돌 뒤: 남은 밀기/끌기 회전이 천을 잡으면서 속도로 바뀐다
+          var k = Math.min(1, 5 * dt);
+          b.vx += b.qx * k; b.vy += b.qy * k; b.qx -= b.qx * k; b.qy -= b.qy * k;
+          if (Math.abs(b.qx) + Math.abs(b.qy) < 1) b.qx = b.qy = 0;
+          any = true;
+        } else { b.qx *= 1 - 0.35 * dt; b.qy *= 1 - 0.35 * dt; } // 가는 동안 조금씩 풀린다
+      }
+      if (b.side !== 0) b.side *= 1 - 0.15 * dt;
+      var v = Math.hypot(b.vx, b.vy);
+      if (v === 0) continue;
+      b.x += b.vx * dt; b.y += b.vy * dt;
+      var nv = v - (70 + 0.3 * v) * dt;
+      if (nv <= 0) { b.vx = b.vy = 0; } else { b.vx *= nv / v; b.vy *= nv / v; any = true; }
+      var hit = false, imp = 0, pvx = b.vx, pvy = b.vy;
+      if (b.x < R) { b.x = R; if (b.vx < 0) { imp = -b.vx; b.vx = -b.vx * E_CUSHION; b.vy *= 0.97; hit = true; } }
+      else if (b.x > TW - R) { b.x = TW - R; if (b.vx > 0) { imp = b.vx; b.vx = -b.vx * E_CUSHION; b.vy *= 0.97; hit = true; } }
+      if (b.y < R) { b.y = R; if (b.vy < 0) { imp = -b.vy; b.vy = -b.vy * E_CUSHION; b.vx *= 0.97; hit = true; } }
+      else if (b.y > TH - R) { b.y = TH - R; if (b.vy > 0) { imp = b.vy; b.vy = -b.vy * E_CUSHION; b.vx *= 0.97; hit = true; } }
+      if (hit) {
+        var hitX = pvx * b.vx < 0, hitY = pvy * b.vy < 0;
+        if (hitX) cushionSpin(b, 0, 1, pvx, pvy);
+        if (hitY) cushionSpin(b, 1, 0, pvx, pvy);
+        if (b.id === cueId) { S.shot.cushions++; shotInfo(); }
+        click(170, 0.09, Math.min(0.3, imp / 2500));
+      }
+    }
+    for (i = 0; i < bs.length; i++) for (j = i + 1; j < bs.length; j++) {
+      var a = bs[i]; b = bs[j];
+      var dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
+      if (d2 >= 4 * R * R || d2 === 0) continue;
+      var d = Math.sqrt(d2), nx = dx / d, ny = dy / d, ov = 2 * R - d;
+      a.x -= nx * ov / 2; a.y -= ny * ov / 2; b.x += nx * ov / 2; b.y += ny * ov / 2;
+      var rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+      if (rel <= 0) continue;
+      var k = rel * (1 + E_BALL) / 2;
+      a.vx -= k * nx; a.vy -= k * ny; b.vx += k * nx; b.vy += k * ny;
+      any = true; a.rel = b.rel = true;
+      if (a.id === cueId) recordHit(b); else if (b.id === cueId) recordHit(a);
+      click(2100, 0.035, Math.min(0.5, rel / 1800));
+    }
+    if (!any) { S.moving = false; if (LIVE) resolveShot(); }
+  }
+
+  // ---------- 조준선 계산 ----------
+  function cast(ox, oy, dx, dy, skipId) {
+    var R = S.R, best = Infinity, res = null, t;
+    if (dx > 1e-9) { t = (TW - R - ox) / dx; if (t > 1e-6 && t < best) { best = t; res = { wall: 'x' }; } }
+    if (dx < -1e-9) { t = (R - ox) / dx; if (t > 1e-6 && t < best) { best = t; res = { wall: 'x' }; } }
+    if (dy > 1e-9) { t = (TH - R - oy) / dy; if (t > 1e-6 && t < best) { best = t; res = { wall: 'y' }; } }
+    if (dy < -1e-9) { t = (R - oy) / dy; if (t > 1e-6 && t < best) { best = t; res = { wall: 'y' }; } }
+    S.balls.forEach(function (b) {
+      if (b.id === skipId) return;
+      var fx = ox - b.x, fy = oy - b.y, B = fx * dx + fy * dy, C = fx * fx + fy * fy - 4 * R * R, disc = B * B - C;
+      if (disc < 0) return;
+      var tt = -B - Math.sqrt(disc);
+      if (tt > 1e-6 && tt < best) { best = tt; res = { ball: b }; }
+    });
+    if (!res) return null;
+    res.t = best; res.x = ox + dx * best; res.y = oy + dy * best;
+    return res;
+  }
+  function drawAimLine() {
+    var c = cueBall(), R = S.R, ox = c.x, oy = c.y, dx = Math.cos(S.angle), dy = Math.sin(S.angle);
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (var seg = 0; seg < 3; seg++) {
+      var h = cast(ox, oy, dx, dy, c.id);
+      if (!h) break;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (seg === 0 ? 0.85 : 0.4) + ')';
+      ctx.lineWidth = 1.6; ctx.setLineDash(seg === 0 ? [] : [7, 7]);
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(h.x, h.y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(h.x, h.y, R, 0, Math.PI * 2); ctx.stroke();
+      if (h.ball) {
+        var nx = (h.ball.x - h.x) / (2 * R), ny = (h.ball.y - h.y) / (2 * R);
+        var dn = dx * nx + dy * ny, tx = dx - dn * nx, ty = dy - dn * ny, tl = Math.hypot(tx, ty);
+        ctx.strokeStyle = 'rgba(255,214,102,.9)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(h.ball.x, h.ball.y); ctx.lineTo(h.ball.x + nx * (40 + 110 * dn), h.ball.y + ny * (40 + 110 * dn)); ctx.stroke();
+        if (tl > 0.04) {
+          ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.setLineDash([5, 6]); ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(h.x + tx / tl * (30 + 110 * tl), h.y + ty / tl * (30 + 110 * tl)); ctx.stroke();
+        }
+        break;
+      }
+      if (h.wall === 'x') dx = -dx; else dy = -dy;
+      ox = h.x; oy = h.y;
+    }
+    ctx.restore();
+  }
+
+  // ---------- 그리기 ----------
+  function fit() {
+    var w = cv.clientWidth || 800, dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    cv.width = Math.round(w * dpr); cv.height = Math.round(w * CH / CW * dpr);
+    scale = cv.width / CW;
+  }
+  function drawTable() {
+    var g = ctx.createLinearGradient(0, 0, 0, CH);
+    g.addColorStop(0, '#7a4f2e'); g.addColorStop(0.5, '#5b3a22'); g.addColorStop(1, '#3f2716');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH);
+    ctx.fillStyle = '#123f70'; ctx.fillRect(RAIL - 11, RAIL - 11, TW + 22, TH + 22);
+    var cg = ctx.createRadialGradient(RAIL + TW / 2, RAIL + TH / 2, 60, RAIL + TW / 2, RAIL + TH / 2, TW * 0.62);
+    cg.addColorStop(0, '#2a74c2'); cg.addColorStop(1, '#17508f');
+    ctx.fillStyle = cg; ctx.fillRect(RAIL, RAIL, TW, TH);
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.strokeRect(RAIL, RAIL, TW, TH);
+    ctx.fillStyle = '#efe6cf';
+    var i, m = (RAIL - 11) / 2;
+    for (i = 1; i < 8; i++) { dot(RAIL + i * TW / 8, m, 3); dot(RAIL + i * TW / 8, CH - m, 3); }
+    for (i = 1; i < 4; i++) { dot(m, RAIL + i * TH / 4, 3); dot(CW - m, RAIL + i * TH / 4, 3); }
+    ctx.fillStyle = 'rgba(255,255,255,.28)';
+    dot(RAIL + 250, RAIL + 250, 2.2); dot(RAIL + 500, RAIL + 250, 2.2); dot(RAIL + 750, RAIL + 250, 2.2);
+  }
+  function dot(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
+  function drawBall(b) {
+    var R = S.R, c = COLORS[b.kind];
+    ctx.fillStyle = 'rgba(0,0,0,.32)';
+    ctx.beginPath(); ctx.ellipse(b.x + 3, b.y + 4.5, R, R * 0.92, 0, 0, Math.PI * 2); ctx.fill();
+    var g = ctx.createRadialGradient(b.x - R * 0.38, b.y - R * 0.42, R * 0.1, b.x, b.y, R);
+    g.addColorStop(0, c[0]); g.addColorStop(0.45, c[1]); g.addColorStop(1, c[2]);
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, Math.PI * 2); ctx.fill();
+  }
+  function drawCue() {
+    var c = cueBall(), R = S.R, ux = -Math.cos(S.angle), uy = -Math.sin(S.angle), px = -uy, py = ux;
+    var gap = R + 6 + S.power * 0.45, len = 360;
+    var x0 = c.x + ux * gap, y0 = c.y + uy * gap, x1 = x0 + ux * len, y1 = y0 + uy * len;
+    function quad(a, b, wa, wb, fill) {
+      var ax = x0 + ux * len * a, ay = y0 + uy * len * a, bx = x0 + ux * len * b, by = y0 + uy * len * b;
+      ctx.fillStyle = fill; ctx.beginPath();
+      ctx.moveTo(ax + px * wa, ay + py * wa); ctx.lineTo(bx + px * wb, by + py * wb);
+      ctx.lineTo(bx - px * wb, by - py * wb); ctx.lineTo(ax - px * wa, ay - py * wa); ctx.closePath(); ctx.fill();
+    }
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 6 * scale; ctx.shadowOffsetY = 4 * scale;
+    quad(0, 1, 2.2, 5, '#d9b77e');
+    ctx.shadowColor = 'transparent';
+    quad(0, 0.012, 2.2, 2.2, '#3b82c4');
+    quad(0.012, 0.04, 2.2, 2.3, '#f5efe2');
+    quad(0.62, 1, 3.9, 5, '#2a1a12');
+    quad(0.6, 0.62, 3.85, 3.9, '#e3ab3d');
+    ctx.restore();
+    void x1; void y1;
+  }
+  function draw() {
+    ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    drawTable();
+    ctx.translate(RAIL, RAIL);
+    if (!S.moving && !S.over) {
+      if (S.aimLine) drawAimLine();
+      var c = cueBall();
+      ctx.strokeStyle = 'rgba(227,171,61,.9)'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(c.x, c.y, S.R + 4, 0, Math.PI * 2); ctx.stroke();
+    }
+    S.balls.forEach(drawBall);
+    if (!S.moving && !S.over) drawCue();
+  }
+
+  // ---------- 소리 ----------
+  var ac = null;
+  function initAudio() {
+    if (ac || !S.sound) return;
+    try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; }
+  }
+  function click(freq, dur, vol) {
+    if (!LIVE || !ac || !S.sound || vol < 0.01) return;
+    try {
+      var o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+      o.type = 'triangle'; o.frequency.setValueAtTime(freq, t); o.frequency.exponentialRampToValueAtTime(freq * 0.6, t + dur);
+      g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+      o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.01);
+    } catch (e) {}
+  }
+
+  // ---------- 입력 ----------
+  var dragging = false;
+  function aimAt(ev) {
+    if (S.moving || S.over || !canAct()) return;
+    var r = cv.getBoundingClientRect();
+    var x = (ev.clientX - r.left) / r.width * CW - RAIL, y = (ev.clientY - r.top) / r.height * CH - RAIL, c = cueBall();
+    if (Math.hypot(x - c.x, y - c.y) < S.R * 1.3) return;
+    S.angle = Math.atan2(y - c.y, x - c.x);
+    publishAim();
+  }
+  cv.addEventListener('pointerdown', function (ev) { dragging = true; try { cv.setPointerCapture(ev.pointerId); } catch (e) {} aimAt(ev); ev.preventDefault(); });
+  cv.addEventListener('pointermove', function (ev) { if (dragging) aimAt(ev); });
+  cv.addEventListener('pointerup', function () { dragging = false; });
+  cv.addEventListener('pointercancel', function () { dragging = false; });
+
+  $('power').addEventListener('input', function () { S.power = S.humanPower = +this.value; $('powerOut').textContent = S.power; publishAim(); });
+  $('shoot').addEventListener('click', function () { shoot(false); });
+  var tipDrag = false;
+  function tipAt(ev) {
+    var r = $('tip').getBoundingClientRect();
+    setTip(((ev.clientX - r.left) / r.width - 0.5) / 0.38, -((ev.clientY - r.top) / r.height - 0.5) / 0.38);
+  }
+  $('tip').addEventListener('pointerdown', function (ev) { tipDrag = true; try { this.setPointerCapture(ev.pointerId); } catch (e) {} tipAt(ev); ev.preventDefault(); });
+  $('tip').addEventListener('pointermove', function (ev) { if (tipDrag) tipAt(ev); });
+  $('tip').addEventListener('pointerup', function () { tipDrag = false; });
+  $('tip').addEventListener('pointercancel', function () { tipDrag = false; });
+  $('tipReset').addEventListener('click', function () { setTip(0, 0); });
+  $('vsFriend').addEventListener('click', function () { if (!S.online) setVs('online'); });
+  $('vsAI').addEventListener('click', function () { if (!S.vsAI) setVs('ai'); });
+  $('vsLocal').addEventListener('click', function () { if (S.online || S.vsAI) setVs('local'); });
+  $('roomCreate').addEventListener('click', function () { NET.tries = 0; enterRoom(String(1000 + Math.floor(Math.random() * 9000)), true); });
+  $('roomJoin').addEventListener('click', function () {
+    var code = $('roomCode').value.trim();
+    if (!/^\d{4}$/.test(code)) { NET.note = '방 코드는 숫자 4자리입니다.'; netUI(); return; }
+    enterRoom(code, false);
+  });
+  $('roomLeave').addEventListener('click', function () { leaveRoom(''); newGame(); });
+  $('level').addEventListener('change', function () { S.level = this.value; savePrefs(); });
+  $('mode3').addEventListener('click', function () { if (S.mode !== 3) { S.mode = 3; savePrefs(); newGame(); } });
+  $('mode4').addEventListener('click', function () { if (S.mode !== 4) { S.mode = 4; savePrefs(); newGame(); } });
+  $('aimSwitch').addEventListener('click', function () { S.aimLine = !S.aimLine; savePrefs(); syncUI(); });
+  $('c3Switch').addEventListener('click', function () { S.threeC = !S.threeC; savePrefs(); if (inRoom()) newGame(); else syncUI(); });
+  $('soundSwitch').addEventListener('click', function () { S.sound = !S.sound; if (S.sound) initAudio(); savePrefs(); syncUI(); });
+  $('target').addEventListener('change', function () { S.target = +this.value; savePrefs(); newGame(); });
+  $('newGame').addEventListener('click', newGame);
+
+  document.addEventListener('keydown', function (ev) {
+    var tag = ev.target && ev.target.tagName;
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    if (!canAct()) return;
+    var stepA = (ev.shiftKey ? 0.1 : 1) * Math.PI / 180, used = true;
+    if (ev.key === 'ArrowLeft') S.angle -= stepA;
+    else if (ev.key === 'ArrowRight') S.angle += stepA;
+    else if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') {
+      S.power = Math.max(5, Math.min(100, S.power + (ev.key === 'ArrowUp' ? 5 : -5)));
+      S.humanPower = S.power;
+      $('power').value = S.power; $('powerOut').textContent = S.power;
+    }
+    else if (ev.code === 'KeyW') setTip(S.tip.x, S.tip.y + 0.15);
+    else if (ev.code === 'KeyS') setTip(S.tip.x, S.tip.y - 0.15);
+    else if (ev.code === 'KeyA') setTip(S.tip.x - 0.15, S.tip.y);
+    else if (ev.code === 'KeyD') setTip(S.tip.x + 0.15, S.tip.y);
+    else if (ev.key === ' ' && tag !== 'BUTTON') shoot();
+    else used = false;
+    if (used) { ev.preventDefault(); publishAim(); }
+  });
+
+  // ---------- 루프 ----------
+  var last = performance.now(), acc = 0;
+  function frame(now) {
+    var el = Math.min(0.05, (now - last) / 1000); last = now;
+    if (S.moving) {
+      acc += el;
+      while (acc >= DT && S.moving) { step(DT); acc -= DT; }
+    } else acc = 0;
+    draw();
+    requestAnimationFrame(frame);
+  }
+  if (window.ResizeObserver) new ResizeObserver(fit).observe(cv); else window.addEventListener('resize', fit);
+  $('power').value = S.power;
+  try { $('roomCode').value = localStorage.getItem('carom-code') || ''; } catch (e) {}
+  if (S.online) getRoom();
+  showTip();
+  fit(); newGame(); draw();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
