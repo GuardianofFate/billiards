@@ -229,7 +229,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   </section>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 (function () {
   'use strict';
@@ -431,70 +431,111 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     roomPromise = Promise.resolve(window.claude.use('room')).catch(function () { return null; });
     return roomPromise;
   }
-  // Claude 밖(GitHub Pages 등)에서는 PeerJS로 두 브라우저를 직접 잇는다. 위의 room과 같은 모양의 객체를 돌려줘서 나머지 코드는 그대로 쓴다.
-  function makePeerRoom() {
-    var P = window.Peer, peer = null, conn = null, role = '', me = {}, opp = null, myId = 'me';
-    var pl = [], cl = [], lastC = null;
-    function pid(code) { return 'carom4-billiards-' + code; }
-    // 직접 연결이 막힌 네트워크(공유기 격리, 회사·학교 망)에서는 TURN 중계 서버를 거친다.
-    function cfg() {
-      return { debug: 0, config: { iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }
-      ] } };
-    }
-    function isConn() { return role === 'host' ? !!(peer && peer.open && !peer.disconnected) : !!(conn && conn.open); }
+  // Claude 밖(GitHub Pages 등)에서는 공개 MQTT 중계 서버(웹소켓)로 두 브라우저를 잇는다.
+  // 직접 연결(WebRTC)이 막힌 네트워크에서도, 바깥으로 나가는 일반 웹 연결만 되면 동작한다. 위의 room과 같은 모양의 객체를 돌려준다.
+  function makeRelayRoom() {
+    var BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://broker.hivemq.com:8884/mqtt'];
+    var cid = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 6);
+    var clients = [], topic = '', code = '', role = '', me = {}, opp = null, oppId = null, oppSeen = 0, seq = 0;
+    var seen = {}, seenList = [], pl = [], cl = [], lastC = null, flushT = null, tickT = null, closed = false;
+    var probing = false, probeHit = false, hooks = { pres: null, full: null };
+    function up() { return clients.some(function (c) { return c.connected; }); }
+    function alive() { return !!opp && Date.now() - oppSeen < 9000; }
+    function isConn() { return role === 'host' ? up() : (up() && alive()); }
     function peers() {
-      var a = [{ peer: myId, by: null, isMe: true, sameTab: true, kind: 'viewer', guest: false, presence: me, updatedAt: 0 }];
-      if (conn && conn.open && opp) a.push({ peer: String(conn.peer), by: null, isMe: false, sameTab: false, kind: 'viewer', guest: false, presence: opp, updatedAt: 0 });
+      var a = [{ peer: cid, by: null, isMe: true, sameTab: true, kind: 'viewer', guest: false, presence: me, updatedAt: 0 }];
+      if (oppId && opp) a.push({ peer: oppId, by: null, isMe: false, sameTab: false, kind: 'viewer', guest: false, presence: opp, updatedAt: 0 });
       return a;
     }
     function fireP() { pl.slice().forEach(function (f) { try { f({ peers: peers(), joined: [], left: [], updated: [] }); } catch (e) {} }); }
     function fireC() { var c = isConn(); if (c === lastC) return; lastC = c; cl.slice().forEach(function (f) { try { f(c); } catch (e) {} }); }
-    function bind(c, onFirst) {
-      conn = c;
-      c.on('data', function (d) {
-        if (!d || d.t !== 'p' || !d.p || typeof d.p !== 'object' || JSON.stringify(d.p).length > 8000) return;
-        var first = !opp; opp = d.p; if (first && onFirst) onFirst(); fireP();
+    function send(msg) {
+      msg.f = cid; msg.i = cid + ':' + (++seq);
+      var s = JSON.stringify(msg);
+      clients.forEach(function (c) { if (c.connected) { try { c.publish(topic, s, { qos: 0 }); } catch (e) {} } });
+    }
+    function flush() { flushT = null; if (!closed) send({ t: 'p', p: me }); }
+    function dropOpp() { if (oppId) { opp = null; oppId = null; fireP(); fireC(); } }
+    function onMsg(raw) {
+      var m; try { m = JSON.parse(raw); } catch (e) { return; }
+      if (!m || typeof m !== 'object' || typeof m.f !== 'string' || typeof m.i !== 'string' || m.f === cid) return;
+      if (seen[m.i]) return;
+      seen[m.i] = 1; seenList.push(m.i); if (seenList.length > 300) delete seen[seenList.shift()];
+      if (probing) { if (m.t === 'p' && m.p && m.p.k === code) probeHit = true; return; }
+      if (m.t === 'full') { if (m.to === cid && hooks.full) hooks.full(); return; }
+      if (m.t === 'bye') { if (m.f === oppId) dropOpp(); return; }
+      var busy = !!oppId && oppId !== m.f && alive();
+      if (m.t === 'hi') {
+        if (busy) { if (role === 'host') send({ t: 'full', to: m.f }); return; }
+        if (role === 'host' && me.k) send({ t: 'p', p: me });
+        return;
+      }
+      if (m.t === 'p' && m.p && typeof m.p === 'object' && JSON.stringify(m.p).length <= 8000) {
+        if (busy) { if (role === 'host') send({ t: 'full', to: m.f }); return; }
+        var first = oppId !== m.f;
+        oppId = m.f; oppSeen = Date.now(); opp = m.p;
+        if (first && me.k) send({ t: 'p', p: me });
+        if (hooks.pres) hooks.pres(m.p);
+        fireP(); fireC();
+      }
+    }
+    function open(c) {
+      code = c; topic = 'carom4-billiards/v1/' + c;
+      return new Promise(function (res, rej) {
+        var done = false, t = setTimeout(function () { if (!done) { done = true; rej({ type: 'network' }); } }, 10000);
+        BROKERS.forEach(function (url) {
+          var cli;
+          try { cli = window.mqtt.connect(url, { clientId: 'c4-' + cid + Math.random().toString(36).slice(2, 5), reconnectPeriod: 3000, connectTimeout: 8000, clean: true }); } catch (e) { return; }
+          clients.push(cli);
+          cli.on('connect', function () {
+            cli.subscribe(topic, { qos: 0 }, function () {});
+            if (!done) { done = true; clearTimeout(t); setTimeout(res, 1200); } // 다른 중계 서버가 뒤따라 붙을 시간을 조금 준다
+            fireC();
+          });
+          cli.on('message', function (tp, payload) { onMsg(payload.toString()); });
+          cli.on('close', fireC); cli.on('offline', fireC); cli.on('error', function () {});
+        });
+        if (!clients.length) { done = true; clearTimeout(t); rej({ type: 'network' }); }
       });
-      c.on('close', function () { if (conn === c) { conn = null; opp = null; fireP(); fireC(); } });
-      c.on('error', function () {});
-      var go = function () { try { c.send({ t: 'p', p: me }); } catch (e) {} fireC(); };
-      if (c.open) go(); else c.on('open', go);
+    }
+    function startTick() {
+      tickT = setInterval(function () {
+        if (closed) return;
+        if (up() && (role === 'host' || me.k)) send({ t: 'p', p: me });
+        if (oppId && !alive()) dropOpp(); else fireC();
+      }, 2500);
     }
     return {
-      host: function (code) {
-        return new Promise(function (res, rej) {
-          role = 'host'; var ok = false;
-          peer = new P(pid(code), cfg());
-          peer.on('open', function (id) { myId = id; ok = true; fireC(); res(); });
-          peer.on('error', function (e) { if (!ok) rej(e); });
-          peer.on('disconnected', function () { fireC(); try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) {} });
-          peer.on('connection', function (c) {
-            if (conn && conn.open) { c.on('open', function () { c.close(); }); return; }
-            bind(c);
+      host: function (c) {
+        role = 'host';
+        return open(c).then(function () {
+          return new Promise(function (res, rej) { // 같은 코드의 방이 이미 열려 있는지 잠깐 듣는다
+            probing = true; probeHit = false;
+            send({ t: 'hi' });
+            setTimeout(function () {
+              probing = false;
+              if (probeHit) { rej({ type: 'unavailable-id' }); return; }
+              startTick(); res();
+            }, 1800);
           });
         });
       },
-      dial: function (code) {
-        return new Promise(function (res, rej) {
-          role = 'guest'; var done = false, t;
-          var fail = function (e) { if (!done) { done = true; clearTimeout(t); rej(e || { type: 'timeout' }); } };
-          peer = new P(undefined, cfg());
-          peer.on('error', fail);
-          t = setTimeout(function () { fail({ type: 'timeout' }); }, 15000);
-          peer.on('open', function (id) {
-            myId = id;
-            var c = peer.connect(pid(code), { reliable: true, serialization: 'json' });
-            bind(c, function () { if (!done) { done = true; clearTimeout(t); res(); } });
-            c.on('iceStateChanged', function (s) { if (s === 'failed') fail({ type: 'ice' }); });
+      dial: function (c) {
+        role = 'guest';
+        return open(c).then(function () {
+          return new Promise(function (res, rej) {
+            var done = false, n = 0, iv;
+            var end = function (err) { if (done) return; done = true; clearInterval(iv); hooks.pres = hooks.full = null; if (err) rej(err); else res(); };
+            hooks.pres = function (p) { if (p && p.k === code) end(); };
+            hooks.full = function () { end({ type: 'full' }); };
+            send({ t: 'hi' });
+            iv = setInterval(function () { if (++n >= 5) end({ type: 'peer-unavailable' }); else send({ t: 'hi' }); }, 2000);
           });
-        });
+        }).then(function () { startTick(); });
       },
       presence: function (patch) {
         for (var k in patch) { if (patch[k] === null) delete me[k]; else me[k] = patch[k]; }
-        if (conn && conn.open) { try { conn.send({ t: 'p', p: me }); } catch (e) {} }
+        if (!flushT && !closed) flushT = setTimeout(flush, 80);
         return Promise.resolve();
       },
       peers: peers,
@@ -502,10 +543,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       onConnection: function (f) { cl.push(f); lastC = isConn(); setTimeout(function () { try { f(lastC); } catch (e) {} }, 0); return function () { cl = cl.filter(function (x) { return x !== f; }); }; },
       connected: isConn,
       close: function () {
-        pl = []; cl = [];
-        try { if (conn) conn.close(); } catch (e) {}
-        try { if (peer) peer.destroy(); } catch (e) {}
-        conn = null; opp = null;
+        if (closed) return;
+        try { if (up()) send({ t: 'bye' }); } catch (e) {}
+        closed = true; clearTimeout(flushT); clearInterval(tickT); pl = []; cl = [];
+        setTimeout(function () { clients.forEach(function (c) { try { c.end(true); } catch (e) {} }); }, 250);
       }
     };
   }
@@ -596,7 +637,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (NET.joining) return;
     NET.joining = true; NET.note = '연결하는 중…'; netUI();
     getRoom().then(function (room) {
-      if (!room && window.Peer) room = makePeerRoom();
+      if (!room && window.mqtt) room = makeRelayRoom();
       if (!room) {
         NET.joining = false;
         NET.note = '이 화면에서는 온라인 연결을 쓸 수 없습니다. Claude에 로그인한 상태로, 공유받은 링크에서 열어 주세요.';
@@ -626,11 +667,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         try { room.close(); } catch (e) {}
         NET.room = null; NET.joining = false;
         if (creator && t === 'unavailable-id' && (NET.tries = (NET.tries || 0) + 1) < 6) { enterRoom(String(1000 + Math.floor(Math.random() * 9000)), true); return; }
-        var direct = '친구와 직접 연결되지 않습니다. 두 컴퓨터의 네트워크(회사·학교 망, 방화벽, VPN)가 막고 있을 수 있습니다.';
-        var server = '중개 서버(peerjs)에 연결하지 못했습니다. 이 컴퓨터의 인터넷이나 방화벽, 광고 차단 확장 프로그램이 막고 있을 수 있습니다.';
+        var server = '중개 서버에 연결하지 못했습니다. 이 컴퓨터의 인터넷, 방화벽, 광고 차단 확장 프로그램이 막고 있을 수 있습니다.';
         var why = { 'peer-unavailable': '그 코드의 방을 찾을 수 없습니다. 코드를 다시 확인하고, 방을 만든 사람이 페이지를 열어 둔 상태인지 확인해 주세요.',
-          timeout: direct, ice: direct, network: server, 'server-error': server, 'socket-error': server, 'socket-closed': server,
-          'browser-incompatible': '이 브라우저는 온라인 대결을 지원하지 않습니다. 최신 Chrome이나 Edge로 열어 주세요.' };
+          full: '이 방에는 이미 두 명이 들어와 있습니다.', network: server };
         NET.note = (why[t] || '연결하지 못했습니다.') + ' [오류: ' + (t || '알 수 없음') + ']';
         netUI();
       });
