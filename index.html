@@ -436,6 +436,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     var P = window.Peer, peer = null, conn = null, role = '', me = {}, opp = null, myId = 'me';
     var pl = [], cl = [], lastC = null;
     function pid(code) { return 'carom4-billiards-' + code; }
+    // 직접 연결이 막힌 네트워크(공유기 격리, 회사·학교 망)에서는 TURN 중계 서버를 거친다.
+    function cfg() {
+      return { debug: 0, config: { iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        { urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' }
+      ] } };
+    }
     function isConn() { return role === 'host' ? !!(peer && peer.open && !peer.disconnected) : !!(conn && conn.open); }
     function peers() {
       var a = [{ peer: myId, by: null, isMe: true, sameTab: true, kind: 'viewer', guest: false, presence: me, updatedAt: 0 }];
@@ -459,7 +467,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       host: function (code) {
         return new Promise(function (res, rej) {
           role = 'host'; var ok = false;
-          peer = new P(pid(code), { debug: 0 });
+          peer = new P(pid(code), cfg());
           peer.on('open', function (id) { myId = id; ok = true; fireC(); res(); });
           peer.on('error', function (e) { if (!ok) rej(e); });
           peer.on('disconnected', function () { fireC(); try { if (peer && !peer.destroyed) peer.reconnect(); } catch (e) {} });
@@ -473,13 +481,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         return new Promise(function (res, rej) {
           role = 'guest'; var done = false, t;
           var fail = function (e) { if (!done) { done = true; clearTimeout(t); rej(e || { type: 'timeout' }); } };
-          peer = new P(undefined, { debug: 0 });
+          peer = new P(undefined, cfg());
           peer.on('error', fail);
           t = setTimeout(function () { fail({ type: 'timeout' }); }, 15000);
           peer.on('open', function (id) {
             myId = id;
             var c = peer.connect(pid(code), { reliable: true, serialization: 'json' });
             bind(c, function () { if (!done) { done = true; clearTimeout(t); res(); } });
+            c.on('iceStateChanged', function (s) { if (s === 'failed') fail({ type: 'ice' }); });
           });
         });
       },
@@ -617,8 +626,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         try { room.close(); } catch (e) {}
         NET.room = null; NET.joining = false;
         if (creator && t === 'unavailable-id' && (NET.tries = (NET.tries || 0) + 1) < 6) { enterRoom(String(1000 + Math.floor(Math.random() * 9000)), true); return; }
-        NET.note = t === 'peer-unavailable' ? '그 코드의 방을 찾을 수 없습니다. 코드를 다시 확인해 주세요.'
-          : '연결하지 못했습니다. 인터넷 연결을 확인하고 잠시 뒤 다시 시도해 주세요.';
+        var direct = '친구와 직접 연결되지 않습니다. 두 컴퓨터의 네트워크(회사·학교 망, 방화벽, VPN)가 막고 있을 수 있습니다.';
+        var server = '중개 서버(peerjs)에 연결하지 못했습니다. 이 컴퓨터의 인터넷이나 방화벽, 광고 차단 확장 프로그램이 막고 있을 수 있습니다.';
+        var why = { 'peer-unavailable': '그 코드의 방을 찾을 수 없습니다. 코드를 다시 확인하고, 방을 만든 사람이 페이지를 열어 둔 상태인지 확인해 주세요.',
+          timeout: direct, ice: direct, network: server, 'server-error': server, 'socket-error': server, 'socket-closed': server,
+          'browser-incompatible': '이 브라우저는 온라인 대결을 지원하지 않습니다. 최신 Chrome이나 Edge로 열어 주세요.' };
+        NET.note = (why[t] || '연결하지 못했습니다.') + ' [오류: ' + (t || '알 수 없음') + ']';
         netUI();
       });
     });
