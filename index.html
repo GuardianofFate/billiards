@@ -115,8 +115,13 @@ canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 1088 / 588;
 .hud3d .bar i { display: block; height: 100%; width: 0; background: var(--brass); }
 .hint3d { flex: 1 1 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .hint3d input { accent-color: var(--brass); width: 140px; }
-body.v3 #table, body.v3 .power, body.v3 .shoot, body.v3 .hint2d { display: none; }
-body:not(.v3) .only3d { display: none; }
+body.v3 #table, body.v3:not(.v25) .power, body.v3:not(.v25) .shoot, body.v3:not(.v25) .hint2d { display: none; }
+body:not(.v3) .only3d, body.v25 .only3d, body.v25 .strokebar { display: none; }
+body:not(.v25) .only25, body:not(.v25) .cams { display: none; }
+.hud3d .cams { position: absolute; top: 12px; right: 12px; display: inline-flex; gap: 2px; padding: 3px; border-radius: 999px; background: rgba(21,17,14,.74); pointer-events: auto; }
+.hud3d .cams button { font: 500 12.5px/1 var(--body); color: var(--dim); background: none; border: 0; border-radius: 999px; padding: 7px 11px; cursor: pointer; }
+.hud3d .cams button[aria-pressed="true"] { background: var(--brass); color: var(--brass-ink); }
+body.v25 .hud3d .prompt { max-width: calc(100% - 230px); }
 .cue { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
 .tipbox { display: flex; align-items: center; gap: 12px; }
 .tip { position: relative; flex: none; width: 84px; height: 84px; border-radius: 50%; touch-action: none; cursor: crosshair;
@@ -154,17 +159,19 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 <div class="wrap">
   <header>
     <div>
-      <h1>캐롬 <span>당구</span></h1>
+      <h1>당구 <span>클럽</span></h1>
       <p class="rule" id="rule"></p>
     </div>
     <div class="controls">
       <div class="seg" role="group" aria-label="화면">
         <button type="button" id="view2d" aria-pressed="true">2D</button>
+        <button type="button" id="view25" aria-pressed="false">2.5D</button>
         <button type="button" id="view3d" aria-pressed="false">3D</button>
       </div>
       <div class="seg" role="group" aria-label="게임 종류">
         <button type="button" id="mode3" aria-pressed="true">3구</button>
         <button type="button" id="mode4" aria-pressed="false">4구</button>
+        <button type="button" id="mode8" aria-pressed="false">포켓볼</button>
       </div>
       <div class="seg" role="group" aria-label="대결 상대">
         <button type="button" id="vsFriend" aria-pressed="true">친구 대결</button>
@@ -179,9 +186,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         </select>
       </label>
       <button type="button" class="switch" id="aimSwitch" role="switch" aria-checked="true">조준선 <span class="track"><b>ON</b></span></button>
+      <button type="button" class="switch" id="beginSwitch" role="switch" aria-checked="false">초보 모드 <span class="track"><b>OFF</b></span></button>
       <button type="button" class="switch" id="c3Switch" role="switch" aria-checked="false">3쿠션 규칙 <span class="track"><b>OFF</b></span></button>
       <button type="button" class="switch" id="soundSwitch" role="switch" aria-checked="true">소리 <span class="track"><b>ON</b></span></button>
-      <label class="field" for="target">목표
+      <label class="field" id="targetField" for="target">목표
         <select id="target">
           <option value="5">5점</option>
           <option value="10" selected>10점</option>
@@ -228,9 +236,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
   <canvas id="table" aria-label="당구대. 드래그해서 조준합니다."></canvas>
   <div class="stage3d" id="stage3d" hidden>
-    <canvas id="table3d" aria-label="3D 당구장. 캐릭터를 움직여서 칩니다."></canvas>
+    <canvas id="table3d" aria-label="입체 당구대"></canvas>
     <div class="hud3d">
       <p class="prompt" id="prompt3d"></p>
+      <div class="cams" id="cams25" role="group" aria-label="시점">
+        <button type="button" data-cam="0" aria-pressed="true">정면</button>
+        <button type="button" data-cam="1" aria-pressed="false">왼쪽</button>
+        <button type="button" data-cam="2" aria-pressed="false">오른쪽</button>
+        <button type="button" data-cam="3" aria-pressed="false">위</button>
+      </div>
       <p class="note" id="note3d" hidden></p>
       <div class="strokebar"><span>큐 당김</span><div class="bar"><i id="pull3d"></i></div><span id="lastPow3d">힘 –</span></div>
     </div>
@@ -251,7 +265,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       <output id="powerOut" for="power">50</output>
     </div>
     <button type="button" class="shoot" id="shoot">샷</button>
+    <button type="button" class="ghost" id="undoBtn" disabled>치기 전으로 되돌리기 (Z)</button>
     <p class="hint hint2d">테이블을 누르거나 드래그해 조준합니다. <kbd>←</kbd> <kbd>→</kbd> 미세 조준 (<kbd>Shift</kbd>와 함께 더 세밀하게), <kbd>↑</kbd> <kbd>↓</kbd> 힘, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 당점, <kbd>Space</kbd> 샷. 당점을 위로 두면 밀어치기, 아래로 두면 끌어치기, 좌우로 두면 쿠션에서 꺾이는 회전이 걸립니다. 조준선은 무회전 기준입니다.</p>
+    <p class="hint only25">2.5D: 비스듬히 내려다보는 시점입니다. 조작은 2D와 같습니다. 테이블을 누르거나 드래그해 조준하고, 화면 오른쪽 위에서 보는 방향을 바꿉니다.</p>
     <div class="hint3d only3d">
       <label class="field" for="sens">마우스 감도 <input type="range" id="sens" min="0.4" max="2.5" step="0.1" value="1"></label>
       <p class="hint">화면을 클릭하면 마우스가 고정됩니다(Esc로 풀기). <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>로 걷고 마우스로 둘러봅니다. 수구 근처에서 <kbd>E</kbd>나 우클릭으로 큐를 잡으면 캐릭터가 투명해지고 큐 뒤에서 공을 봅니다. 이때 마우스로 당점을, <kbd>A</kbd> <kbd>D</kbd>로 조준 방향을 맞춥니다(<kbd>Shift</kbd>는 미세 조정). 좌클릭을 누른 채 마우스를 아래로 당겼다가 위로 밀면 샷이고, 미는 속도가 힘입니다.</p>
@@ -269,6 +285,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   var DT = 1 / 480, E_BALL = 0.96, E_CUSHION = 0.82;
   var COLORS = { w: ['#ffffff', '#f4f0e6', '#b9b2a2'], y: ['#fff3b0', '#f2c230', '#a97c0c'], r: ['#ff8a80', '#c8232c', '#6f0d14'] };
   var NAMES = ['1P', '2P'], CUE = ['w', 'y'];
+  // 포켓볼(8볼): 수구 하나를 둘이 같이 쓰고, 공 id는 p1..p15
+  var POOL = 8, BLUE = '#6fd2ff';
+  var PCOL = [null, '#f2c230', '#2456b8', '#c8232c', '#6a3fa0', '#e8792b', '#1f8a4c', '#7a2430', '#18181a'];
+  var POCKETS = [[0, 0, 31], [TW, 0, 31], [0, TH, 31], [TW, TH, 31], [TW / 2, -4, 25], [TW / 2, TH + 4, 25]];
 
   // ---------- 상태 ----------
   var S = { mode: 3, aimLine: true, threeC: false, sound: true, target: 10,
@@ -276,13 +296,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
             moving: false, shot: null, over: false, R: 10.8,
             vsAI: false, level: 'normal', aiToken: 0, humanPower: 50,
             online: true, gid: '', n: 0, shotMine: true,
-            tip: { x: 0, y: 0 }, view: '2d', sens: 1 }; // 당점: x 오른쪽(+), y 위쪽(+), 반지름 1 안
+            tip: { x: 0, y: 0 }, view: '2d', sens: 1,
+            groups: [null, null], hand: false, winner: -1, beginner: false, undo: [] }; // 당점: x 오른쪽(+), y 위쪽(+), 반지름 1 안
   // 온라인 대결: 같은 링크를 연 사람끼리 presence(각자의 현재 상태)만으로 샷과 결과를 맞춘다.
   var NET = { room: null, code: null, seat: 0, opp: null, confirmed: 0, fresh: false, joining: false, connected: false, note: '' };
   var LIVE = true; // false면 AI가 머릿속으로 샷을 시뮬레이션하는 중
   try {
     var saved = JSON.parse(localStorage.getItem('carom-prefs') || '{}');
-    if (saved.mode === 3 || saved.mode === 4) S.mode = saved.mode;
+    if (saved.mode === 3 || saved.mode === 4 || saved.mode === 8) S.mode = saved.mode;
     if (typeof saved.aimLine === 'boolean') S.aimLine = saved.aimLine;
     if (typeof saved.threeC === 'boolean') S.threeC = saved.threeC;
     if (typeof saved.sound === 'boolean') S.sound = saved.sound;
@@ -291,11 +312,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (typeof saved.online === 'boolean') S.online = saved.online;
     if (S.vsAI) S.online = false;
     if (['easy', 'normal', 'hard'].indexOf(saved.level) >= 0) S.level = saved.level;
-    if (saved.view === '3d') S.view = '3d';
+    if (saved.view === '3d' || saved.view === '25') S.view = saved.view;
+    if (typeof saved.beginner === 'boolean') S.beginner = saved.beginner;
     if (typeof saved.sens === 'number' && saved.sens >= 0.4 && saved.sens <= 2.5) S.sens = saved.sens;
   } catch (e) {}
   function savePrefs() {
-    try { localStorage.setItem('carom-prefs', JSON.stringify({ mode: S.mode, aimLine: S.aimLine, threeC: S.threeC, sound: S.sound, target: S.target, vsAI: S.vsAI, online: S.online, level: S.level, view: S.view, sens: S.sens })); } catch (e) {}
+    try { localStorage.setItem('carom-prefs', JSON.stringify({ mode: S.mode, aimLine: S.aimLine, threeC: S.threeC, sound: S.sound, target: S.target, vsAI: S.vsAI, online: S.online, level: S.level, view: S.view, sens: S.sens, beginner: S.beginner })); } catch (e) {}
   }
   function aiTurnNow() { return S.vsAI && S.turn === 1; }
   function canAct() {
@@ -310,7 +332,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 
   // ---------- 게임 진행 ----------
   // qx,qy: 밀기/끌기 회전이 아직 속도로 바뀌지 않은 몫, side: 좌우 회전, rel: 첫 충돌 뒤 회전이 풀리기 시작했는지
-  function ball(id, x, y) { return { id: id, kind: id.charAt(0), x: x, y: y, vx: 0, vy: 0, qx: 0, qy: 0, side: 0, rel: false }; }
+  function ball(id, x, y) { return { id: id, kind: id.charAt(0), num: id.charAt(0) === 'p' ? +id.slice(1) : 0, x: x, y: y, vx: 0, vy: 0, qx: 0, qy: 0, side: 0, rel: false, off: false }; }
   function setTip(x, y) {
     var d = Math.hypot(x, y); if (d > 1) { x /= d; y /= d; }
     S.tip = { x: Math.abs(x) < 0.06 ? 0 : x, y: Math.abs(y) < 0.06 ? 0 : y };
@@ -323,8 +345,65 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (t.x > 0.2) parts.push('오른쪽 회전'); else if (t.x < -0.2) parts.push('왼쪽 회전');
     $('tipName').textContent = parts.length ? parts.join(' + ') : '가운데 (무회전)';
   }
-  function cueBall() { return S.balls[S.turn]; }
+  function isPool() { return S.mode === POOL; }
+  function radiusFor(m) { return m === 4 ? 11.5 : (m === POOL ? 11.3 : 10.8); }
+  function cueBall() { return isPool() ? S.balls[0] : S.balls[S.turn]; }
+  function cueId() { return isPool() ? 'w' : CUE[S.turn]; }
+  function turnName(i) { return isPool() ? NAMES[i] : NAMES[i] + '(' + (i === 0 ? '흰 공' : '노란 공') + ')'; }
+  function goalText() { return isPool() ? '자기 공 7개를 모두 넣은 뒤 8번 공을 넣으면 이깁니다.' : '먼저 ' + S.target + '점을 내면 이깁니다.'; }
+  // --- 포켓볼 규칙 ---
+  function groupOf(n) { return n === 8 ? '8' : (n < 8 ? 's' : 't'); }
+  function groupLabel(g) { return g === 's' ? '단색 1–7' : (g === 't' ? '줄무늬 9–15' : '공 미정'); }
+  function groupLeft(g) { return S.balls.filter(function (b) { return b.num && groupOf(b.num) === g; }).length; }
+  function legalTarget(b) {
+    if (!b.num) return false;
+    var g = S.groups[S.turn];
+    if (!g) return b.num !== 8 || S.balls.length === 2;
+    if (groupLeft(g) === 0) return b.num === 8;
+    return groupOf(b.num) === g;
+  }
+  function pocketAt(x, y) {
+    for (var i = 0; i < POCKETS.length; i++) { var p = POCKETS[i]; if (Math.hypot(x - p[0], y - p[1]) < p[2]) return true; }
+    return false;
+  }
+  function newShot() {
+    var g = S.groups[S.turn];
+    return { hits: [], cushions: 0, cushAtSecond: null, pocketed: [], scratch: false,
+             pre: isPool() ? { g: g, left: g ? groupLeft(g) : 0, onlyEight: S.balls.length === 2 } : null };
+  }
+  // 샷 하나의 결과를 판정한다. 샷 전 상태(shot.pre)만 보므로 AI의 가상 샷에도 그대로 쓴다.
+  function poolJudge(shot) {
+    var pre = shot.pre, g = pre.g, first = shot.hits.length ? +shot.hits[0].slice(1) : 0;
+    var pk = shot.pocketed.map(function (id) { return +id.slice(1); }), foul = '';
+    if (shot.scratch) foul = '수구가 포켓에 들어갔습니다';
+    else if (!first) foul = '아무 공도 맞히지 못했습니다';
+    else if (!g) { if (first === 8 && !pre.onlyEight) foul = '8번 공을 먼저 맞혔습니다'; }
+    else if (pre.left === 0) { if (first !== 8) foul = '8번 공을 먼저 맞혀야 합니다'; }
+    else if (groupOf(first) !== g) foul = '자기 공이 아닌 공을 먼저 맞혔습니다';
+    var res = { foul: foul, win: false, lose: false, keep: false, assign: null, own: 0 };
+    if (pk.indexOf(8) >= 0) { if (!foul && g && pre.left === 0) res.win = true; else res.lose = true; return res; }
+    if (!g && !foul && pk.length) res.assign = pk[0] < 8 ? 's' : 't';
+    var gg = g || res.assign;
+    if (gg) res.own = pk.filter(function (n) { return groupOf(n) === gg; }).length;
+    res.keep = !foul && res.own > 0;
+    return res;
+  }
+  function respotCue() {
+    var c = S.balls[0], x = TW / 4, tries = 0;
+    c.off = false; c.vx = c.vy = 0;
+    while (tries++ < 30 && S.balls.some(function (b) { return b !== c && Math.hypot(b.x - x, b.y - TH / 2) < 2 * S.R + 1; })) x += 2 * S.R + 2;
+    c.x = x; c.y = TH / 2;
+  }
+  function placeCue(x, y) { // 파울 뒤 수구를 손으로 옮긴다
+    var c = cueBall(), R = S.R;
+    x = clampN(x, R, TW - R); y = clampN(y, R, TH - R);
+    if (pocketAt(x, y)) return false;
+    if (S.balls.some(function (b) { return b !== c && Math.hypot(b.x - x, b.y - y) < 2 * R + 0.5; })) return false;
+    c.x = x; c.y = y; publishAim();
+    return true;
+  }
   function isTarget(b) {
+    if (isPool()) return legalTarget(b);
     if (b.id === CUE[S.turn]) return false;
     return S.mode === 3 ? true : b.kind === 'r';
   }
@@ -338,18 +417,25 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (best) S.angle = Math.atan2(best.y - c.y, best.x - c.x);
   }
   function newGame() {
-    S.R = S.mode === 4 ? 11.5 : 10.8;
+    S.R = radiusFor(S.mode);
     S.turn = 0; S.scores = [0, 0]; S.moving = false; S.over = false; S.shot = null;
+    S.groups = [null, null]; S.hand = false; S.winner = -1; PRED.key = ''; S.undo = [];
     S.aiToken++; NAMES[1] = S.vsAI ? 'AI' : '2P';
     S.gid = Math.random().toString(36).slice(2, 10); S.n = 0; NET.confirmed = 0;
     if (S.mode === 3) {
       S.balls = [ball('w', 250, 314), ball('y', 250, 250), ball('r1', 750, 250)];
-    } else {
+    } else if (S.mode === 4) {
       S.balls = [ball('w', 125, 296), ball('y', 875, 250), ball('r1', 250, 250), ball('r2', 750, 250)];
+    } else {
+      var rows = [[1], [9, 2], [10, 8, 3], [11, 4, 5, 12], [6, 13, 14, 7, 15]], gx = S.R * Math.sqrt(3) + 0.3, gy = 2 * S.R + 0.3;
+      S.balls = [ball('w', 250, 250)];
+      rows.forEach(function (row, i) {
+        row.forEach(function (n, j) { S.balls.push(ball('p' + n, 750 + i * gx, 250 + (j - (row.length - 1) / 2) * gy)); });
+      });
     }
     autoAim();
-    say('1P(흰 공)부터 칩니다.', '');
-    $('shotInfo').textContent = '먼저 ' + S.target + '점을 내면 이깁니다.';
+    say(isPool() ? '1P부터 칩니다. 브레이크 샷입니다.' : '1P(흰 공)부터 칩니다.', '');
+    $('shotInfo').textContent = goalText();
     if (inRoom()) publish({ shot: null, aim: null });
     syncUI();
   }
@@ -357,39 +443,51 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   function syncUI() {
     $('mode3').setAttribute('aria-pressed', S.mode === 3);
     $('mode4').setAttribute('aria-pressed', S.mode === 4);
-    setSwitch('aimSwitch', S.aimLine); setSwitch('c3Switch', S.threeC); setSwitch('soundSwitch', S.sound);
+    $('mode8').setAttribute('aria-pressed', isPool());
+    $('targetField').hidden = isPool();
+    setSwitch('aimSwitch', S.aimLine); setSwitch('c3Switch', S.threeC); setSwitch('soundSwitch', S.sound); setSwitch('beginSwitch', S.beginner);
     $('c3Switch').hidden = S.mode !== 3;
     $('vsFriend').setAttribute('aria-pressed', S.online);
     $('vsAI').setAttribute('aria-pressed', S.vsAI);
     $('vsLocal').setAttribute('aria-pressed', !S.online && !S.vsAI);
     $('levelField').hidden = !S.vsAI;
     $('level').value = S.level;
-    $('p1name').textContent = '1P · 흰 공' + (inRoom() && NET.seat === 0 ? ' (나)' : '');
-    $('p2name').textContent = NAMES[1] + ' · 노란 공' + (inRoom() && NET.seat === 1 ? ' (나)' : '');
+    $('p1name').textContent = '1P · ' + (isPool() ? groupLabel(S.groups[0]) : '흰 공') + (inRoom() && NET.seat === 0 ? ' (나)' : '');
+    $('p2name').textContent = NAMES[1] + ' · ' + (isPool() ? groupLabel(S.groups[1]) : '노란 공') + (inRoom() && NET.seat === 1 ? ' (나)' : '');
+    [0, 1].forEach(function (i) { // 점수판의 공 표시: 포켓볼에서는 맡은 공 종류를 보여 준다
+      var d = $(i ? 'p2' : 'p1').querySelector('.dot'), g = S.groups[i];
+      d.style.background = !isPool() ? '' : (g === 's' ? PCOL[3] : (g === 't' ? 'linear-gradient(#f4f0e6 28%, ' + PCOL[2] + ' 28%, ' + PCOL[2] + ' 72%, #f4f0e6 72%)' : '#8a8178'));
+    });
     var guest = inRoom() && NET.seat !== 0; // 설정과 새 게임은 방의 1P만 바꾼다
-    ['mode3', 'mode4', 'c3Switch', 'target', 'newGame'].forEach(function (id) { $(id).disabled = guest; });
+    ['mode3', 'mode4', 'mode8', 'c3Switch', 'target', 'newGame'].forEach(function (id) { $(id).disabled = guest; });
     netUI();
     $('power').disabled = !canAct() && !S.over;
     $('power').value = S.power;
     $('target').value = String(S.target);
-    $('rule').textContent = S.mode === 3
+    $('rule').textContent = isPool()
+      ? '포켓볼 · 처음 넣은 공의 종류(단색/줄무늬)가 내 공이 됩니다. 내 공을 넣으면 한 번 더 치고, 7개를 다 넣은 뒤 8번을 넣으면 승리. 8번을 일찍 넣으면 패배.'
+      : S.mode === 3
       ? (S.threeC ? '3구 · 수구가 쿠션을 3번 이상 맞힌 뒤 두 번째 공을 맞히면 1점.' : '3구 · 내 수구로 나머지 두 공을 모두 맞히면 1점.')
       : '4구 · 빨간 공 두 개를 모두 맞히면 1점. 상대 수구를 맞히거나 헛치면 1점을 잃습니다.';
     $('s1').textContent = S.scores[0]; $('s2').textContent = S.scores[1];
     $('p1').classList.toggle('active', S.turn === 0 && !S.over);
     $('p2').classList.toggle('active', S.turn === 1 && !S.over);
-    $('p1s').textContent = S.over ? (S.scores[0] >= S.target ? '승리' : '패배') : (S.turn === 0 ? '치는 중' : '대기');
-    $('p2s').textContent = S.over ? (S.scores[1] >= S.target ? '승리' : '패배') : (S.turn === 1 ? '치는 중' : '대기');
+    var win = winnerOf();
+    $('p1s').textContent = S.over ? (win === 0 ? '승리' : '패배') : (S.turn === 0 ? '치는 중' : '대기');
+    $('p2s').textContent = S.over ? (win === 1 ? '승리' : '패배') : (S.turn === 1 ? '치는 중' : '대기');
     $('shoot').disabled = S.moving || S.over || !canAct();
+    $('undoBtn').hidden = S.online; $('undoBtn').disabled = S.moving || !S.undo.length;
     $('powerOut').textContent = S.power;
   }
+  function winnerOf() { return isPool() ? S.winner : (S.scores[0] >= S.target ? 0 : 1); }
   function setSwitch(id, on) {
     var el = $(id); el.setAttribute('aria-checked', on ? 'true' : 'false');
     el.querySelector('b').textContent = on ? 'ON' : 'OFF';
   }
   function shotInfo() {
     if (!S.shot || !LIVE) return;
-    $('shotInfo').textContent = '이번 샷 · 쿠션 ' + S.shot.cushions + '번 · 맞힌 공 ' + S.shot.hits.length + '개';
+    $('shotInfo').textContent = isPool() ? '이번 샷 · 넣은 공 ' + S.shot.pocketed.length + '개'
+      : '이번 샷 · 쿠션 ' + S.shot.cushions + '번 · 맞힌 공 ' + S.shot.hits.length + '개';
   }
 
   function speedOf(p) { return 150 + (p / 100) * 2250; }
@@ -401,6 +499,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (S.moving || S.over) return;
     if (fromAI !== true && remote !== true && !canAct()) return;
     S.shotMine = remote !== true;
+    if (fromAI !== true && remote !== true && !inRoom()) { S.undo.push(snapshot()); if (S.undo.length > 30) S.undo.shift(); }
     var tip = remote === true ? remoteTip : (fromAI === true ? { x: 0, y: 0 } : S.tip);
     if (inRoom() && S.shotMine) {
       publish({ aim: null, shot: { gid: S.gid, n: S.n + 1, a: S.angle, p: S.power, ex: tip.x, ey: tip.y,
@@ -411,7 +510,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     S.balls.forEach(function (b) { b.qx = b.qy = b.side = 0; b.rel = false; });
     c.vx = Math.cos(S.angle) * speed; c.vy = Math.sin(S.angle) * speed;
     applySpin(c, S.angle, speed, tip);
-    S.shot = { hits: [], cushions: 0, cushAtSecond: null };
+    S.shot = newShot(); S.hand = false;
     S.moving = true;
     say('공이 구르는 중…', '');
     shotInfo(); syncUI();
@@ -419,6 +518,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   }
 
   function resolveShot() {
+    if (isPool()) { resolvePool(); return; }
     S.n++;
     var h = S.shot.hits, opp = CUE[1 - S.turn], me = NAMES[S.turn];
     var gain = 0, keep = false, text, cls = '';
@@ -447,6 +547,26 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       autoAim();
       if (S.vsAI && S.turn === 0) S.power = S.humanPower;
     }
+    afterShot();
+  }
+  // 되돌리기: 내가 치기 직전의 판을 기억해 두었다가 그대로 돌려놓는다 (온라인 대결에서는 쓰지 않는다)
+  function snapshot() {
+    return { balls: S.balls.map(function (b) { return [b.id, b.x, b.y]; }), turn: S.turn, scores: S.scores.slice(),
+             groups: S.groups.slice(), hand: S.hand, angle: S.angle };
+  }
+  function undoShot() {
+    if (S.moving || S.online || !S.undo.length) return;
+    var u = S.undo.pop();
+    S.aiToken++; // 생각 중이던 AI의 샷은 취소한다
+    if (G.stance) exitStance();
+    S.balls = u.balls.map(function (q) { return ball(q[0], q[1], q[2]); });
+    S.turn = u.turn; S.scores = u.scores.slice(); S.groups = u.groups.slice(); S.hand = u.hand; S.angle = u.angle;
+    S.over = false; S.winner = -1; S.shot = null; S.n++; PRED.key = '';
+    say('마지막 샷을 치기 전으로 되돌렸습니다. ' + turnName(S.turn) + ' 차례입니다.', '');
+    $('shotInfo').textContent = goalText();
+    syncUI();
+  }
+  function afterShot() {
     if (inRoom()) {
       if (S.turn === NET.seat) S.power = S.humanPower;
       if (S.shotMine) { NET.confirmed = S.n; publish(); }
@@ -454,6 +574,33 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     syncUI();
     aiTurn();
     netSync();
+  }
+  function poolScores() { [0, 1].forEach(function (i) { var g = S.groups[i]; S.scores[i] = g ? 7 - groupLeft(g) : 0; }); }
+  function resolvePool() {
+    S.n++;
+    var j = poolJudge(S.shot), me = NAMES[S.turn], text, cls = '';
+    if (S.shot.scratch) respotCue();
+    if (j.win || j.lose) {
+      S.over = true; S.winner = j.win ? S.turn : 1 - S.turn; poolScores();
+      say(j.win ? me + ' 승리! 8번 공을 넣었습니다. 새 게임을 눌러 다시 시작하세요.'
+        : '8번 공이 ' + (S.shot.scratch ? '수구와 함께 ' : (j.foul ? '파울과 함께 ' : '너무 일찍 ')) + '들어갔습니다. ' + NAMES[S.winner] + ' 승리! 새 게임을 눌러 다시 시작하세요.', j.win ? 'good' : 'foul');
+    } else {
+      if (j.assign) { S.groups[S.turn] = j.assign; S.groups[1 - S.turn] = j.assign === 's' ? 't' : 's'; }
+      poolScores();
+      if (j.foul) {
+        S.turn = 1 - S.turn; S.hand = true; cls = 'foul';
+        text = '파울 · ' + j.foul + '. ' + NAMES[S.turn] + ' 차례이며, 수구를 끌어서 원하는 곳에 놓을 수 있습니다.';
+      } else if (j.keep) {
+        text = me + ' ' + j.own + '개 넣었습니다.' + (j.assign ? ' ' + me + '의 공은 ' + groupLabel(j.assign) + '입니다.' : '') + ' 한 번 더 칩니다.'; cls = 'good';
+      } else {
+        S.turn = 1 - S.turn;
+        text = (S.shot.pocketed.length ? '상대 공만 들어갔습니다. ' : '공을 넣지 못했습니다. ') + NAMES[S.turn] + ' 차례입니다.';
+      }
+      say(text, cls);
+      autoAim();
+      if (S.vsAI && S.turn === 0) S.power = S.humanPower;
+    }
+    afterShot();
   }
 
   // ---------- 온라인 ----------
@@ -586,18 +733,27 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   function num(v) { return typeof v === 'number' && isFinite(v); }
   function clampN(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
   function packState() {
-    return { gid: S.gid, n: S.n, m: S.mode, c: S.threeC ? 1 : 0, g: S.target, t: S.turn,
-             s: S.scores.slice(), o: S.over ? 1 : 0, b: S.balls.map(function (b) { return [b.x, b.y]; }) };
+    var st = { gid: S.gid, n: S.n, m: S.mode, c: S.threeC ? 1 : 0, g: S.target, t: S.turn,
+               s: S.scores.slice(), o: S.over ? 1 : 0, b: S.balls.map(function (b) { return [b.x, b.y]; }) };
+    if (isPool()) { st.ids = S.balls.map(function (b) { return b.id; }); st.gr = S.groups.slice(); st.h = S.hand ? 1 : 0; st.w = S.winner; }
+    return st;
   }
-  function validBalls(b, mode) {
-    return Array.isArray(b) && b.length === (mode === 3 ? 3 : 4) &&
-      b.every(function (p) { return Array.isArray(p) && num(p[0]) && num(p[1]); });
+  function validBalls(b, mode, count) {
+    if (!Array.isArray(b)) return false;
+    if (mode === POOL ? (count ? b.length !== count : (b.length < 1 || b.length > 16)) : b.length !== (mode === 3 ? 3 : 4)) return false;
+    return b.every(function (p) { return Array.isArray(p) && num(p[0]) && num(p[1]); });
   }
   function validState(st) {
-    return !!st && typeof st.gid === 'string' && st.gid.length <= 16 && Number.isInteger(st.n) && st.n >= 0 &&
-      (st.m === 3 || st.m === 4) && validBalls(st.b, st.m) && (st.t === 0 || st.t === 1) &&
+    var ok = !!st && typeof st.gid === 'string' && st.gid.length <= 16 && Number.isInteger(st.n) && st.n >= 0 &&
+      (st.m === 3 || st.m === 4 || st.m === POOL) && validBalls(st.b, st.m) && (st.t === 0 || st.t === 1) &&
       Array.isArray(st.s) && st.s.length === 2 && st.s.every(function (v) { return Number.isInteger(v) && v >= 0 && v < 100; }) &&
       [5, 10, 15, 20].indexOf(st.g) >= 0;
+    if (!ok || st.m !== POOL) return ok;
+    var seen = {};
+    return Array.isArray(st.ids) && st.ids.length === st.b.length && st.ids[0] === 'w' &&
+      st.ids.every(function (id) { var good = typeof id === 'string' && /^(w|p([1-9]|1[0-5]))$/.test(id) && !seen[id]; seen[id] = 1; return good; }) &&
+      Array.isArray(st.gr) && st.gr.length === 2 && st.gr.every(function (g) { return g === null || g === 's' || g === 't'; }) &&
+      (st.w === -1 || st.w === 0 || st.w === 1);
   }
   function publish(extra) {
     if (!NET.room || !NET.code) return;
@@ -608,7 +764,9 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   }
   function publishAim() {
     if (!inRoom() || !NET.room || S.moving || S.turn !== NET.seat) return;
-    try { NET.room.presence({ aim: { a: S.angle, p: S.power } }).catch(function () {}); } catch (e) {}
+    var aim = { a: S.angle, p: S.power }, c = cueBall();
+    if (S.hand && c) aim.c = [c.x, c.y];
+    try { NET.room.presence({ aim: aim }).catch(function () {}); } catch (e) {}
   }
   function codePeers(code) {
     if (!NET.room) return [];
@@ -618,16 +776,18 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     });
   }
   function applyState(st) {
-    var quiet = st.gid === S.gid && st.n === S.n && st.t === S.turn && st.s[0] === S.scores[0] && st.s[1] === S.scores[1];
+    var quiet = st.gid === S.gid && st.n === S.n && st.t === S.turn && st.s[0] === S.scores[0] && st.s[1] === S.scores[1] && st.b.length === S.balls.length;
     S.gid = st.gid; S.n = st.n; NET.confirmed = st.n;
-    S.mode = st.m; S.threeC = !!st.c; S.target = st.g; S.R = S.mode === 4 ? 11.5 : 10.8;
-    var ids = S.mode === 3 ? ['w', 'y', 'r1'] : ['w', 'y', 'r1', 'r2'];
+    S.mode = st.m; S.threeC = !!st.c; S.target = st.g; S.R = radiusFor(S.mode);
+    var ids = isPool() ? st.ids : (S.mode === 3 ? ['w', 'y', 'r1'] : ['w', 'y', 'r1', 'r2']);
     S.balls = ids.map(function (id, i) { return ball(id, clampN(st.b[i][0], S.R, TW - S.R), clampN(st.b[i][1], S.R, TH - S.R)); });
     S.turn = st.t; S.scores = st.s.slice(); S.over = !!st.o; S.moving = false; S.shot = null;
+    S.groups = isPool() ? st.gr.slice() : [null, null]; S.hand = isPool() && !!st.h; S.winner = isPool() ? st.w : -1;
+    PRED.key = '';
     if (!quiet) {
-      if (S.over) say(NAMES[S.scores[0] >= S.target ? 0 : 1] + ' 승리! ' + S.target + '점을 먼저 냈습니다.', 'good');
-      else say(NAMES[S.turn] + '(' + (S.turn === 0 ? '흰 공' : '노란 공') + ') 차례입니다.', '');
-      $('shotInfo').textContent = '먼저 ' + S.target + '점을 내면 이깁니다.';
+      if (S.over) say(NAMES[winnerOf() === 1 ? 1 : 0] + ' 승리!', 'good');
+      else say(turnName(S.turn) + ' 차례입니다.' + (S.hand ? ' 수구를 끌어서 원하는 곳에 놓을 수 있습니다.' : ''), '');
+      $('shotInfo').textContent = goalText();
       autoAim();
     }
     if (S.turn === NET.seat) S.power = S.humanPower;
@@ -654,7 +814,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         if (adopt) applyState(st);
       }
       var oppTurn = S.turn === 1 - NET.seat && !S.over;
-      if (oppTurn && sh && sh.gid === S.gid && sh.n === S.n + 1 && num(sh.a) && num(sh.p) && validBalls(sh.b, S.mode)) {
+      if (oppTurn && sh && sh.gid === S.gid && sh.n === S.n + 1 && num(sh.a) && num(sh.p) && validBalls(sh.b, S.mode, S.balls.length)) {
         S.balls.forEach(function (b, j) { b.x = clampN(sh.b[j][0], S.R, TW - S.R); b.y = clampN(sh.b[j][1], S.R, TH - S.R); b.vx = b.vy = 0; });
         S.angle = sh.a; S.power = clampN(sh.p, 5, 100);
         var rx = num(sh.ex) ? sh.ex : 0, ry = num(sh.ey) ? sh.ey : 0, rd = Math.hypot(rx, ry);
@@ -662,6 +822,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         shoot(false, true, { x: rx, y: ry });
       } else if (oppTurn && pr.aim && num(pr.aim.a) && num(pr.aim.p)) {
         S.angle = pr.aim.a; S.power = clampN(pr.aim.p, 5, 100);
+        var ac2 = pr.aim.c; // 상대가 손으로 옮기는 수구 위치
+        if (S.hand && isPool() && Array.isArray(ac2) && num(ac2[0]) && num(ac2[1])) { S.balls[0].x = clampN(ac2[0], S.R, TW - S.R); S.balls[0].y = clampN(ac2[1], S.R, TH - S.R); }
       }
     }
     syncUI();
@@ -745,20 +907,60 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   // ---------- AI ----------
   // 후보 샷을 실제 물리로 미리 굴려 보고 가장 좋은 결과를 고른다. 난이도는 후보 수와 조준 오차로 조절.
   var LEVELS = { easy: { n: 30, noise: 2.2 }, normal: { n: 120, noise: 0.7 }, hard: { n: 420, noise: 0.12 } };
-  function simulate(angle, power) {
+  // tip을 주면 회전까지, trace를 주면 수구와 처음 맞은 공이 지나간 길까지 기록한다 (초보 모드의 예상선).
+  function simulate(angle, power, tip, trace) {
     var keep = { balls: S.balls, shot: S.shot, moving: S.moving };
     S.balls = keep.balls.map(function (b) { return ball(b.id, b.x, b.y); });
-    S.shot = { hits: [], cushions: 0, cushAtSecond: null };
-    var c = S.balls[S.turn], sp = speedOf(power), n = 0;
+    S.shot = newShot();
+    var c = cueBall(), sp = speedOf(power), n = 0, obj = null, lx = c.x, ly = c.y, ox = 0, oy = 0, after = 0, cueDone = false;
     c.vx = Math.cos(angle) * sp; c.vy = Math.sin(angle) * sp;
+    if (tip) applySpin(c, angle, sp, tip);
+    if (trace) { trace.cue = [[c.x, c.y]]; trace.obj = []; trace.hit = null; trace.potted = false; trace.scratch = false; }
     LIVE = false; S.moving = true;
-    while (S.moving && n++ < 6000) step(DT);
+    while (S.moving && n++ < 6000) {
+      step(DT);
+      if (!trace || n % 4) continue;
+      if (!cueDone && !c.off && Math.hypot(c.x - lx, c.y - ly) > 4) {
+        if (obj) after += Math.hypot(c.x - lx, c.y - ly);
+        trace.cue.push([c.x, c.y]); lx = c.x; ly = c.y;
+        if (after > 700) cueDone = true; // 수구는 처음 맞힌 뒤 조금만 더 그린다 (끝까지 그리면 선이 너무 많다)
+      }
+      if (!obj && S.shot.hits.length) {
+        var hid = S.shot.hits[0];
+        keep.balls.forEach(function (b) { if (b.id === hid) { trace.obj.push([b.x, b.y]); ox = b.x; oy = b.y; } });
+        S.balls.forEach(function (b) { if (b.id === hid) obj = b; });
+        trace.hit = [c.x, c.y];
+        if (!obj) { trace.potted = true; obj = { gone: true, done: true }; }
+      } else if (obj && !obj.done) {
+        if (obj.gone) { trace.potted = true; trace.obj.push([obj.x, obj.y]); obj.done = true; }
+        else if (Math.hypot(obj.x - ox, obj.y - oy) > 4) { trace.obj.push([obj.x, obj.y]); ox = obj.x; oy = obj.y; }
+      }
+    }
+    if (trace) {
+      if (!c.off && !cueDone) trace.cue.push([c.x, c.y]);
+      if (obj && !obj.done) { if (obj.gone) trace.potted = true; trace.obj.push([obj.x, obj.y]); }
+      trace.scratch = !!S.shot.scratch;
+    }
     var out = S.shot;
     LIVE = true; S.balls = keep.balls; S.shot = keep.shot; S.moving = keep.moving;
     return out;
   }
+  var PRED = { key: '', cue: [], obj: [], hit: null, potted: false, scratch: false };
+  function predict() { // 조준·힘·당점이 바뀔 때만 다시 굴려 본다
+    var c = cueBall(), mine = canAct();
+    var key = [S.gid, S.n, S.mode, S.angle.toFixed(4), S.power, mine ? S.tip.x.toFixed(2) + ',' + S.tip.y.toFixed(2) : '-', c.x.toFixed(1), c.y.toFixed(1), S.balls.length].join('|');
+    if (key !== PRED.key) { PRED.key = key; simulate(S.angle, S.power, mine ? S.tip : null, PRED); }
+    return PRED;
+  }
   function rate(shot) {
     var h = shot.hits;
+    if (isPool()) {
+      var j = poolJudge(shot);
+      if (j.win) return 1000;
+      if (j.lose) return -1000;
+      if (j.foul) return -60;
+      return j.keep ? 100 + 25 * j.own : 10;
+    }
     if (S.mode === 3) {
       if (h.length >= 2 && (!S.threeC || shot.cushAtSecond >= 3)) return 100;
       return h.length * 10 + (S.threeC && h.length >= 2 ? shot.cushAtSecond * 5 : 0);
@@ -767,12 +969,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     return h.length === 2 ? 100 : 10;
   }
   function aiPlan() {
-    var lv = LEVELS[S.level], c = cueBall(), targets = S.balls.filter(isTarget), best = null;
-    var powers = [30, 45, 60, 80, 100];
-    for (var i = 0; i < lv.n; i++) {
-      var a;
-      if (i % 3 !== 2) {
-        var t = targets[Math.floor(Math.random() * targets.length)];
+    var lv = LEVELS[S.level], c = cueBall(), pool = isPool(), targets = S.balls.filter(isTarget), best = null;
+    var powers = [30, 45, 60, 80, 100], count = pool ? Math.max(20, Math.round(lv.n * 0.4)) : lv.n;
+    if (!targets.length) targets = S.balls.filter(function (b) { return b !== c; });
+    for (var i = 0; i < count; i++) {
+      var a, t = targets[Math.floor(Math.random() * targets.length)];
+      if (pool && i % 3 === 0) { // 포켓을 겨냥: 목표 공 바로 뒤, 수구가 닿아야 할 자리로 보낸다
+        var pk = POCKETS[Math.floor(Math.random() * POCKETS.length)], ux = pk[0] - t.x, uy = pk[1] - t.y, ul = Math.hypot(ux, uy) || 1;
+        a = Math.atan2(t.y - uy / ul * 2 * S.R - c.y, t.x - ux / ul * 2 * S.R - c.x) + (Math.random() * 2 - 1) * 0.006;
+      } else if (i % 3 !== 2) {
         var d = Math.hypot(t.x - c.x, t.y - c.y), spread = Math.asin(Math.min(1, 2 * S.R / d));
         a = Math.atan2(t.y - c.y, t.x - c.x) + (Math.random() * 2 - 1) * spread * 0.98;
       } else a = Math.random() * Math.PI * 2;
@@ -816,9 +1021,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     b.rel = true;
   }
   function step(dt) {
-    var R = S.R, cueId = CUE[S.turn], bs = S.balls, i, j, b, any = false;
+    var R = S.R, cid = cueId(), pool = isPool(), bs = S.balls, i, j, b, any = false, sunk = false;
     for (i = 0; i < bs.length; i++) {
       b = bs[i];
+      if (b.off) continue;
       if (b.qx !== 0 || b.qy !== 0) {
         if (b.rel) { // 충돌 뒤: 남은 밀기/끌기 회전이 천을 잡으면서 속도로 바뀐다
           var k = Math.min(1, 5 * dt);
@@ -831,6 +1037,13 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       var v = Math.hypot(b.vx, b.vy);
       if (v === 0) continue;
       b.x += b.vx * dt; b.y += b.vy * dt;
+      if (pool && pocketAt(b.x, b.y)) { // 포켓에 떨어졌다
+        any = true;
+        if (b.id === 'w') { S.shot.scratch = true; b.off = true; b.vx = b.vy = b.qx = b.qy = b.side = 0; b.x = b.y = -500; }
+        else { S.shot.pocketed.push(b.id); b.gone = true; sunk = true; }
+        click(110, 0.16, 0.3); shotInfo();
+        continue;
+      }
       var nv = v - (70 + 0.3 * v) * dt;
       if (nv <= 0) { b.vx = b.vy = 0; } else { b.vx *= nv / v; b.vy *= nv / v; any = true; }
       var hit = false, imp = 0, pvx = b.vx, pvy = b.vy;
@@ -842,22 +1055,24 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
         var hitX = pvx * b.vx < 0, hitY = pvy * b.vy < 0;
         if (hitX) cushionSpin(b, 0, 1, pvx, pvy);
         if (hitY) cushionSpin(b, 1, 0, pvx, pvy);
-        if (b.id === cueId) { S.shot.cushions++; shotInfo(); }
+        if (b.id === cid) { S.shot.cushions++; shotInfo(); }
         click(170, 0.09, Math.min(0.3, imp / 2500));
       }
     }
+    if (sunk) bs = S.balls = bs.filter(function (q) { return !q.gone; });
     for (i = 0; i < bs.length; i++) for (j = i + 1; j < bs.length; j++) {
       var a = bs[i]; b = bs[j];
+      if (a.off || b.off) continue;
       var dx = b.x - a.x, dy = b.y - a.y, d2 = dx * dx + dy * dy;
       if (d2 >= 4 * R * R || d2 === 0) continue;
       var d = Math.sqrt(d2), nx = dx / d, ny = dy / d, ov = 2 * R - d;
       a.x -= nx * ov / 2; a.y -= ny * ov / 2; b.x += nx * ov / 2; b.y += ny * ov / 2;
       var rel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
       if (rel <= 0) continue;
-      var k = rel * (1 + E_BALL) / 2;
-      a.vx -= k * nx; a.vy -= k * ny; b.vx += k * nx; b.vy += k * ny;
+      var kk = rel * (1 + E_BALL) / 2;
+      a.vx -= kk * nx; a.vy -= kk * ny; b.vx += kk * nx; b.vy += kk * ny;
       any = true; a.rel = b.rel = true;
-      if (a.id === cueId) recordHit(b); else if (b.id === cueId) recordHit(a);
+      if (a.id === cid) recordHit(b); else if (b.id === cid) recordHit(a);
       click(2100, 0.035, Math.min(0.5, rel / 1800));
     }
     if (!any) { S.moving = false; if (LIVE) resolveShot(); }
@@ -871,7 +1086,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (dy > 1e-9) { t = (TH - R - oy) / dy; if (t > 1e-6 && t < best) { best = t; res = { wall: 'y' }; } }
     if (dy < -1e-9) { t = (R - oy) / dy; if (t > 1e-6 && t < best) { best = t; res = { wall: 'y' }; } }
     S.balls.forEach(function (b) {
-      if (b.id === skipId) return;
+      if (b.id === skipId || b.off) return;
       var fx = ox - b.x, fy = oy - b.y, B = fx * dx + fy * dy, C = fx * fx + fy * fy - 4 * R * R, disc = B * B - C;
       if (disc < 0) return;
       var tt = -B - Math.sqrt(disc);
@@ -920,9 +1135,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     var g = ctx.createLinearGradient(0, 0, 0, CH);
     g.addColorStop(0, '#7a4f2e'); g.addColorStop(0.5, '#5b3a22'); g.addColorStop(1, '#3f2716');
     ctx.fillStyle = g; ctx.fillRect(0, 0, CW, CH);
-    ctx.fillStyle = '#123f70'; ctx.fillRect(RAIL - 11, RAIL - 11, TW + 22, TH + 22);
+    var pool = isPool();
+    ctx.fillStyle = pool ? '#0e4a2e' : '#123f70'; ctx.fillRect(RAIL - 11, RAIL - 11, TW + 22, TH + 22);
     var cg = ctx.createRadialGradient(RAIL + TW / 2, RAIL + TH / 2, 60, RAIL + TW / 2, RAIL + TH / 2, TW * 0.62);
-    cg.addColorStop(0, '#2a74c2'); cg.addColorStop(1, '#17508f');
+    cg.addColorStop(0, pool ? '#1f8a55' : '#2a74c2'); cg.addColorStop(1, pool ? '#14633c' : '#17508f');
     ctx.fillStyle = cg; ctx.fillRect(RAIL, RAIL, TW, TH);
     ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2; ctx.strokeRect(RAIL, RAIL, TW, TH);
     ctx.fillStyle = '#efe6cf';
@@ -931,15 +1147,53 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     for (i = 1; i < 4; i++) { dot(m, RAIL + i * TH / 4, 3); dot(CW - m, RAIL + i * TH / 4, 3); }
     ctx.fillStyle = 'rgba(255,255,255,.28)';
     dot(RAIL + 250, RAIL + 250, 2.2); dot(RAIL + 500, RAIL + 250, 2.2); dot(RAIL + 750, RAIL + 250, 2.2);
+    if (pool) { // 포켓 6개
+      ctx.fillStyle = '#0b0908';
+      POCKETS.forEach(function (p, i) {
+        if (i < 4) dot(RAIL + p[0] + (p[0] ? 5 : -5), RAIL + p[1] + (p[1] ? 5 : -5), 25);
+        else dot(RAIL + p[0], RAIL + p[1] + (p[1] < 0 ? -6 : 6), 21);
+      });
+    }
   }
   function dot(x, y, r) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); }
   function drawBall(b) {
-    var R = S.R, c = COLORS[b.kind];
+    if (b.off) return;
+    var R = S.R, c = COLORS[b.kind], g;
     ctx.fillStyle = 'rgba(0,0,0,.32)';
     ctx.beginPath(); ctx.ellipse(b.x + 3, b.y + 4.5, R, R * 0.92, 0, 0, Math.PI * 2); ctx.fill();
-    var g = ctx.createRadialGradient(b.x - R * 0.38, b.y - R * 0.42, R * 0.1, b.x, b.y, R);
+    if (b.num) { // 포켓볼 공: 단색, 또는 흰 바탕에 띠, 가운데 번호
+      var col = PCOL[b.num > 8 ? b.num - 8 : b.num];
+      ctx.save();
+      ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, Math.PI * 2); ctx.clip();
+      ctx.fillStyle = b.num > 8 ? '#f4f0e6' : col; ctx.fillRect(b.x - R, b.y - R, 2 * R, 2 * R);
+      if (b.num > 8) { ctx.fillStyle = col; ctx.fillRect(b.x - R, b.y - R * 0.56, 2 * R, R * 1.12); }
+      ctx.fillStyle = '#f7f3ea'; ctx.beginPath(); ctx.arc(b.x, b.y, R * 0.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#18181a'; ctx.font = '700 ' + (R * 0.78) + 'px Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(b.num), b.x, b.y + R * 0.05);
+      g = ctx.createRadialGradient(b.x - R * 0.38, b.y - R * 0.42, R * 0.1, b.x, b.y, R);
+      g.addColorStop(0, 'rgba(255,255,255,.4)'); g.addColorStop(0.45, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.4)');
+      ctx.fillStyle = g; ctx.fillRect(b.x - R, b.y - R, 2 * R, 2 * R);
+      ctx.restore();
+      return;
+    }
+    g = ctx.createRadialGradient(b.x - R * 0.38, b.y - R * 0.42, R * 0.1, b.x, b.y, R);
     g.addColorStop(0, c[0]); g.addColorStop(0.45, c[1]); g.addColorStop(1, c[2]);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, Math.PI * 2); ctx.fill();
+  }
+  // 초보 모드: 실제로 굴려 본 결과를 그린다. 흰 점선은 수구, 파란 선은 처음 맞은 공이 가는 길.
+  function drawPrediction() {
+    var p = predict(), i;
+    function path(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); }
+    ctx.save(); ctx.lineCap = ctx.lineJoin = 'round';
+    if (p.cue.length > 1) { ctx.strokeStyle = 'rgba(255,255,255,.62)'; ctx.lineWidth = 1.6; ctx.setLineDash([6, 6]); path(p.cue); ctx.setLineDash([]); }
+    if (p.hit) { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(p.hit[0], p.hit[1], S.R, 0, Math.PI * 2); ctx.stroke(); }
+    if (p.obj.length > 1) {
+      var e = p.obj[p.obj.length - 1];
+      ctx.strokeStyle = 'rgba(0,20,60,.45)'; ctx.lineWidth = 5.5; path(p.obj);
+      ctx.strokeStyle = BLUE; ctx.lineWidth = 3; path(p.obj);
+      ctx.fillStyle = BLUE; dot(e[0], e[1], p.potted ? 7 : 4);
+    }
+    ctx.restore();
   }
   function drawCue() {
     var c = cueBall(), R = S.R, ux = -Math.cos(S.angle), uy = -Math.sin(S.angle), px = -uy, py = ux;
@@ -967,10 +1221,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     drawTable();
     ctx.translate(RAIL, RAIL);
     if (!S.moving && !S.over) {
-      if (S.aimLine) drawAimLine();
+      if (S.beginner) drawPrediction(); else if (S.aimLine) drawAimLine();
       var c = cueBall();
       ctx.strokeStyle = 'rgba(227,171,61,.9)'; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.arc(c.x, c.y, S.R + 4, 0, Math.PI * 2); ctx.stroke();
+      if (S.hand) { ctx.setLineDash([5, 5]); ctx.beginPath(); ctx.arc(c.x, c.y, S.R * 2.2, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
     }
     S.balls.forEach(drawBall);
     if (!S.moving && !S.over) drawCue();
@@ -993,19 +1248,33 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   }
 
   // ---------- 입력 ----------
-  var dragging = false;
-  function aimAt(ev) {
-    if (S.moving || S.over || !canAct()) return;
-    var r = cv.getBoundingClientRect();
-    var x = (ev.clientX - r.left) / r.width * CW - RAIL, y = (ev.clientY - r.top) / r.height * CH - RAIL, c = cueBall();
+  var dragging = false, handDrag = false;
+  function aimTo(x, y) {
+    var c = cueBall();
     if (Math.hypot(x - c.x, y - c.y) < S.R * 1.3) return;
     S.angle = Math.atan2(y - c.y, x - c.x);
     publishAim();
   }
-  cv.addEventListener('pointerdown', function (ev) { dragging = true; try { cv.setPointerCapture(ev.pointerId); } catch (e) {} aimAt(ev); ev.preventDefault(); });
-  cv.addEventListener('pointermove', function (ev) { if (dragging) aimAt(ev); });
-  cv.addEventListener('pointerup', function () { dragging = false; });
-  cv.addEventListener('pointercancel', function () { dragging = false; });
+  // 2D와 2.5D가 같이 쓰는 테이블 입력: 누른 곳이 (손에 든) 수구면 수구를 옮기고, 아니면 조준한다
+  function tableDown(x, y) {
+    handDrag = false;
+    if (S.moving || S.over || !canAct()) return;
+    var c = cueBall();
+    if (S.hand && Math.hypot(x - c.x, y - c.y) < S.R * 2.2) { handDrag = true; return; }
+    aimTo(x, y);
+  }
+  function tableMove(x, y) {
+    if (S.moving || S.over || !canAct()) return;
+    if (handDrag) placeCue(x, y); else aimTo(x, y);
+  }
+  function cvPoint(ev) {
+    var r = cv.getBoundingClientRect();
+    return [(ev.clientX - r.left) / r.width * CW - RAIL, (ev.clientY - r.top) / r.height * CH - RAIL];
+  }
+  cv.addEventListener('pointerdown', function (ev) { dragging = true; try { cv.setPointerCapture(ev.pointerId); } catch (e) {} var p = cvPoint(ev); tableDown(p[0], p[1]); ev.preventDefault(); });
+  cv.addEventListener('pointermove', function (ev) { if (dragging) { var p = cvPoint(ev); tableMove(p[0], p[1]); } });
+  cv.addEventListener('pointerup', function () { dragging = false; handDrag = false; });
+  cv.addEventListener('pointercancel', function () { dragging = false; handDrag = false; });
 
   $('power').addEventListener('input', function () { S.power = S.humanPower = +this.value; $('powerOut').textContent = S.power; publishAim(); });
   $('shoot').addEventListener('click', function () { shoot(false); });
@@ -1032,11 +1301,18 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   $('level').addEventListener('change', function () { S.level = this.value; savePrefs(); });
   $('mode3').addEventListener('click', function () { if (S.mode !== 3) { S.mode = 3; savePrefs(); newGame(); } });
   $('mode4').addEventListener('click', function () { if (S.mode !== 4) { S.mode = 4; savePrefs(); newGame(); } });
+  $('mode8').addEventListener('click', function () { if (S.mode !== POOL) { S.mode = POOL; savePrefs(); newGame(); } });
+  $('beginSwitch').addEventListener('click', function () { S.beginner = !S.beginner; PRED.key = ''; savePrefs(); syncUI(); });
   $('aimSwitch').addEventListener('click', function () { S.aimLine = !S.aimLine; savePrefs(); syncUI(); });
   $('c3Switch').addEventListener('click', function () { S.threeC = !S.threeC; savePrefs(); if (inRoom()) newGame(); else syncUI(); });
   $('soundSwitch').addEventListener('click', function () { S.sound = !S.sound; if (S.sound) initAudio(); savePrefs(); syncUI(); });
   $('target').addEventListener('change', function () { S.target = +this.value; savePrefs(); newGame(); });
   $('newGame').addEventListener('click', newGame);
+  $('undoBtn').addEventListener('click', undoShot);
+  document.addEventListener('keydown', function (ev) {
+    var tag = ev.target && ev.target.tagName;
+    if (ev.code === 'KeyZ' && !ev.repeat && tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') undoShot();
+  });
 
   document.addEventListener('keydown', function (ev) {
     if (S.view === '3d') return;
@@ -1060,12 +1336,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (used) { ev.preventDefault(); publishAim(); }
   });
 
-  // ---------- 3D 모드 ----------
-  // 물리와 규칙은 2D와 같고, 보는 방법과 치는 방법만 다르다: 캐릭터로 걸어가 큐를 잡고, 마우스를 당겼다 미는 속도로 힘을 정한다.
+  // ---------- 입체 화면 (2.5D · 3D) ----------
+  // 물리와 규칙은 2D와 같고 보는 방법만 다르다.
+  // 2.5D: 비스듬히 내려다보며 2D와 같은 방식으로 조준한다.
+  // 3D: 캐릭터로 걸어가 큐를 잡고, 마우스를 당겼다 미는 속도로 힘을 정한다.
   var U = 0.002844, TABLE_Y = 0.8, REST = 0.05, MAXPULL = 0.42, REACH = 2.1;
+  var CAMS = [{ p: [0, 2.75, 2.55], l: [0, 0.75, 0.12] }, { p: [-2.9, 2.3, 1.9], l: [0.1, 0.75, 0] },
+              { p: [2.9, 2.3, 1.9], l: [-0.1, 0.75, 0] }, { p: [0, 3.95, 0.03], l: [0, 0.8, 0] }];
   var G = { ready: false, failed: false, pos: { x: -0.71, z: 1.5 }, yaw: -Math.PI / 2, pitch: 0.38, face: -Math.PI / 2, walkT: 0, moving: false,
             stance: false, dir: 0, d: REST, stroking: false, samples: [], maxD: 0, lastPower: 0, btn: false,
-            keys: {}, sens: 1, locked: false, note: '', noteUntil: 0, blendUntil: 0, opacity: 1, balls: {}, first: true, prompt: '' };
+            keys: {}, sens: 1, locked: false, note: '', noteUntil: 0, blendUntil: 0, opacity: 1, balls: {}, first: true, prompt: '',
+            cam25: 0, drag25: false, theme: 0, predKey: '' };
   function wx(x) { return (x - TW / 2) * U; }
   function wz(y) { return (y - TH / 2) * U; }
   function note3d(t) { G.note = t; G.noteUntil = performance.now() + 2200; }
@@ -1082,6 +1363,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     scene.background = new T.Color(0x0f0c0a); scene.fog = new T.Fog(0x0f0c0a, 8, 18);
     G.cam = new T.PerspectiveCamera(55, 16 / 9, 0.03, 40);
     G.camPos = new T.Vector3(); G.camLook = new T.Vector3(); G.v1 = new T.Vector3(); G.v2 = new T.Vector3(); G.v3 = new T.Vector3(); G.up = new T.Vector3(0, 1, 0);
+    G.ray = new T.Raycaster(); G.ndc = new T.Vector2();
     function mat(color, rough, extra) {
       var m = new T.MeshStandardMaterial({ color: color, roughness: rough === undefined ? 0.8 : rough, metalness: 0 });
       m.color.convertSRGBToLinear(); // 화면 출력이 sRGB라서, 지정한 색이 그대로 보이게 선형으로 바꿔 둔다
@@ -1099,8 +1381,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     lamp.position.set(0, 2.3, 0); lamp.target.position.set(0, TABLE_Y, 0);
     lamp.castShadow = true; lamp.shadow.mapSize.set(1024, 1024); lamp.shadow.camera.near = 0.4; lamp.shadow.camera.far = 6; lamp.shadow.bias = -0.0008;
     scene.add(lamp); scene.add(lamp.target);
-    add(new T.BoxGeometry(2.3, 0.1, 0.55), mat(0x1c3f2b, 0.6), 0, 2.43, 0, false);
-    add(new T.BoxGeometry(2.1, 0.02, 0.4), mat(0xfff2d8, 1, { emissive: new T.Color(0xfff2d8), emissiveIntensity: 1 }), 0, 2.37, 0, false);
+    G.lampParts = [add(new T.BoxGeometry(2.3, 0.1, 0.55), mat(0x1c3f2b, 0.6), 0, 2.43, 0, false),
+                   add(new T.BoxGeometry(2.1, 0.02, 0.4), mat(0xfff2d8, 1, { emissive: new T.Color(0xfff2d8), emissiveIntensity: 1 }), 0, 2.37, 0, false)];
     [[-6.3, -2.5], [-6.3, 2.5], [6.3, -2.5], [6.3, 2.5]].forEach(function (p) {
       var pl = new T.PointLight(0xffc98a, 0.6, 8, 1.5); pl.position.set(p[0] * 0.93, 2.2, p[1]); scene.add(pl);
       add(new T.SphereGeometry(0.09, 12, 8), mat(0xffd9a6, 1, { emissive: new T.Color(0xffb866), emissiveIntensity: 1 }), p[0], 2.2, p[1], false);
@@ -1116,11 +1398,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     add(new T.PlaneGeometry(11, 3.4), wall, 6.5, 1.7, 0, false).rotation.y = -Math.PI / 2;
 
     // 당구대
-    var PW = TW * U, PD = TH * U, cush = 11 * U, wood = (RAIL - 11) * U, woodM = mat(0x5b3a22, 0.55), cushM = mat(0x174d88, 0.95);
-    add(new T.BoxGeometry(PW + 2 * cush, 0.02, PD + 2 * cush), mat(0x1a5596, 0.95), 0, TABLE_Y - 0.01, 0, false);
+    var PW = TW * U, PD = TH * U, cush = 11 * U, wood = (RAIL - 11) * U, woodM = mat(0x5b3a22, 0.55);
+    G.clothMat = mat(0x1a5596, 0.95); G.cushMat = mat(0x174d88, 0.95);
+    add(new T.BoxGeometry(PW + 2 * cush, 0.02, PD + 2 * cush), G.clothMat, 0, TABLE_Y - 0.01, 0, false);
     [-1, 1].forEach(function (s) {
-      add(new T.BoxGeometry(PW + 2 * cush, 0.036, cush), cushM, 0, TABLE_Y + 0.018, s * (PD / 2 + cush / 2));
-      add(new T.BoxGeometry(cush, 0.036, PD), cushM, s * (PW / 2 + cush / 2), TABLE_Y + 0.018, 0);
+      add(new T.BoxGeometry(PW + 2 * cush, 0.036, cush), G.cushMat, 0, TABLE_Y + 0.018, s * (PD / 2 + cush / 2));
+      add(new T.BoxGeometry(cush, 0.036, PD), G.cushMat, s * (PW / 2 + cush / 2), TABLE_Y + 0.018, 0);
       add(new T.BoxGeometry(CW * U, 0.05, wood), woodM, 0, TABLE_Y + 0.015, s * (PD / 2 + cush + wood / 2));
       add(new T.BoxGeometry(wood, 0.05, PD + 2 * cush), woodM, s * (PW / 2 + cush + wood / 2), TABLE_Y + 0.015, 0);
     });
@@ -1131,12 +1414,25 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     [-1.3, 0, 1.3].forEach(function (x) { [-0.62, 0.62].forEach(function (z) { add(new T.CylinderGeometry(0.075, 0.06, 0.58, 12), woodM, x, 0.29, z); }); });
     var spotM = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
     [-0.25, 0, 0.25].forEach(function (f) { var sp = new T.Mesh(new T.CircleGeometry(0.006, 12), spotM); sp.rotation.x = -Math.PI / 2; sp.position.set(f * PW, TABLE_Y + 0.0008, 0); scene.add(sp); });
+    // 포켓 (포켓볼에서만 보인다): 레일 위에 얹은 검은 원판
+    G.pockets = new T.Group(); G.pockets.visible = false; scene.add(G.pockets);
+    var holeM = new T.MeshBasicMaterial({ color: 0x050403 });
+    POCKETS.forEach(function (p, pi) {
+      var hole = new T.Mesh(new T.CircleGeometry((pi < 4 ? 27 : 23) * U, 28), holeM);
+      hole.rotation.x = -Math.PI / 2;
+      hole.position.set(wx(p[0] + (pi < 4 ? (p[0] ? 6 : -6) : 0)), TABLE_Y + 0.0412, wz(p[1] + (pi < 4 ? (p[1] ? 6 : -6) : (p[1] < 0 ? -8 : 8))));
+      G.pockets.add(hole);
+    });
 
-    // 공
-    var sg = new T.SphereGeometry(1, 36, 24), cols = { w: 0xf4f0e6, y: 0xf2c230, r1: 0xc8232c, r2: 0xc8232c };
-    ['w', 'y', 'r1', 'r2'].forEach(function (id) { G.balls[id] = add(sg, mat(cols[id], 0.12), 0, TABLE_Y, 0); });
-    G.turnRing = new T.Mesh(new T.RingGeometry(1.3, 1.5, 40), new T.MeshBasicMaterial({ color: 0xe3ab3d, transparent: true, opacity: 0.9, side: T.DoubleSide }));
-    G.turnRing.rotation.x = -Math.PI / 2; scene.add(G.turnRing);
+    // 공은 필요할 때 만든다 (ballMesh)
+    G.ballGeo = new T.SphereGeometry(1, 36, 24);
+    function ring(inner, outer, color, opacity) {
+      var m = new T.Mesh(new T.RingGeometry(inner, outer, 40), new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: T.DoubleSide, depthWrite: false }));
+      m.rotation.x = -Math.PI / 2; scene.add(m); return m;
+    }
+    G.turnRing = ring(1.3, 1.5, 0xe3ab3d, 0.9);
+    G.handRing = ring(2.05, 2.2, 0xe3ab3d, 0.7);
+    G.ghost = ring(0.86, 1, 0xffffff, 0.85);
 
     // 큐: 그룹 원점이 팁 끝, 몸통은 -Y 쪽으로 뻗는다
     function makeCue() {
@@ -1170,24 +1466,86 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     add(new T.SphereGeometry(0.014, 8, 6), hair, 0.042, 1.65, 0.105, false, ch);
     G.heldCue = makeCue(); G.heldCue.position.set(0.3, 1.5, 0.06); G.heldCue.rotation.z = -0.05; ch.add(G.heldCue);
 
-    // 조준선 (3D에서도 조준선 스위치를 따른다)
-    G.linePos = new Float32Array(3 * 6); G.objPos = new Float32Array(6);
-    var lg = new T.BufferGeometry(); lg.setAttribute('position', new T.BufferAttribute(G.linePos, 3));
-    G.line = new T.Line(lg, new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })); G.line.frustumCulled = false; scene.add(G.line);
-    var og = new T.BufferGeometry(); og.setAttribute('position', new T.BufferAttribute(G.objPos, 3));
-    G.objLine = new T.Line(og, new T.LineBasicMaterial({ color: 0xffd666 })); G.objLine.frustumCulled = false; scene.add(G.objLine);
-    G.ghost = new T.Mesh(new T.RingGeometry(0.86, 1, 40), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: T.DoubleSide }));
-    G.ghost.rotation.x = -Math.PI / 2; scene.add(G.ghost);
+    // 천 위에 눕힌 띠로 선을 그린다 (WebGL의 선은 1픽셀이라 잘 안 보인다)
+    function ribbon(max, color, opacity, width) {
+      var pos = new Float32Array(max * 6), idx = [], q;
+      for (q = 0; q < max - 1; q++) idx.push(q * 2, q * 2 + 1, q * 2 + 2, q * 2 + 1, q * 2 + 3, q * 2 + 2);
+      var g = new T.BufferGeometry(); g.setAttribute('position', new T.BufferAttribute(pos, 3)); g.setIndex(idx);
+      var m = new T.Mesh(g, new T.MeshBasicMaterial({ color: color, transparent: true, opacity: opacity, side: T.DoubleSide, depthWrite: false }));
+      m.frustumCulled = false; m.visible = false; scene.add(m);
+      var rb = { mesh: m, n: 0, set: function (pts, y) { // pts: 테이블 좌표 [[x,y],...]
+        var n = Math.min(pts.length, max), e;
+        rb.n = n;
+        if (n < 2) { m.visible = false; return; }
+        for (e = 0; e < n; e++) {
+          var p = pts[e], a = pts[Math.max(e - 1, 0)], b = pts[Math.min(e + 1, n - 1)];
+          var dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, ox = -dz / l * width / 2, oz = dx / l * width / 2, X = wx(p[0]), Z = wz(p[1]);
+          pos[e * 6] = X + ox; pos[e * 6 + 1] = y; pos[e * 6 + 2] = Z + oz;
+          pos[e * 6 + 3] = X - ox; pos[e * 6 + 4] = y; pos[e * 6 + 5] = Z - oz;
+        }
+        g.setDrawRange(0, (n - 1) * 6); g.attributes.position.needsUpdate = true; m.visible = true;
+      } };
+      return rb;
+    }
+    G.rbAim = ribbon(8, 0xffffff, 0.85, 0.008);
+    G.rbObj = ribbon(2, 0xffd666, 0.95, 0.01);
+    G.rbCue = ribbon(700, 0xffffff, 0.55, 0.007);
+    G.rbBlue = ribbon(700, 0x6fd2ff, 0.95, 0.016);
+    G.blueEnd = new T.Mesh(new T.CircleGeometry(1, 24), new T.MeshBasicMaterial({ color: 0x6fd2ff, transparent: true, opacity: 0.95, depthWrite: false }));
+    G.blueEnd.rotation.x = -Math.PI / 2; G.blueEnd.visible = false; scene.add(G.blueEnd);
 
     bind3d(cv3);
     if (window.ResizeObserver) new ResizeObserver(fit3d).observe(cv3); else window.addEventListener('resize', fit3d);
     G.ready = true;
     return true;
   }
+  function ballMesh(id) {
+    var m = G.balls[id];
+    if (m) return m;
+    var T = window.THREE, n = id.charAt(0) === 'p' ? +id.slice(1) : 0, mt;
+    if (n) { // 포켓볼 공: 번호와 띠를 그린 무늬를 입힌다
+      var cvs = document.createElement('canvas'); cvs.width = 256; cvs.height = 128;
+      var c = cvs.getContext('2d'), col = PCOL[n > 8 ? n - 8 : n];
+      c.fillStyle = n > 8 ? '#f4f0e6' : col; c.fillRect(0, 0, 256, 128);
+      if (n > 8) { c.fillStyle = col; c.fillRect(0, 34, 256, 60); }
+      [64, 192].forEach(function (x) {
+        c.fillStyle = '#f7f3ea'; c.beginPath(); c.arc(x, 64, 21, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#18181a'; c.font = '700 28px Arial, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(n), x, 66);
+      });
+      var tex = new T.CanvasTexture(cvs); tex.encoding = T.sRGBEncoding;
+      mt = new T.MeshStandardMaterial({ map: tex, roughness: 0.12, metalness: 0 });
+    } else {
+      mt = new T.MeshStandardMaterial({ color: { w: 0xf4f0e6, y: 0xf2c230, r: 0xc8232c }[id.charAt(0)], roughness: 0.12, metalness: 0 });
+      mt.color.convertSRGBToLinear();
+    }
+    m = new T.Mesh(G.ballGeo, mt); m.castShadow = true; m.receiveShadow = true;
+    m.rotation.x = -Math.PI / 2; // 번호가 위를 보게
+    m.userData.lx = null;
+    G.scene.add(m); G.balls[id] = m;
+    return m;
+  }
+  function theme3d() { // 캐롬은 파란 천, 포켓볼은 초록 천과 포켓
+    if (G.theme === S.mode) return;
+    G.theme = S.mode;
+    var pool = isPool();
+    G.clothMat.color.set(pool ? 0x15704a : 0x1a5596).convertSRGBToLinear();
+    G.cushMat.color.set(pool ? 0x0e4a2e : 0x174d88).convertSRGBToLinear();
+    G.pockets.visible = pool;
+  }
   function fit3d() {
     if (!G.renderer) return;
     var w = $('table3d').clientWidth || 800, h = Math.round(w * 9 / 16);
     G.renderer.setSize(w, h, false); G.cam.aspect = w / h; G.cam.updateProjectionMatrix();
+  }
+  function pick25(ev) { // 화면의 한 점이 가리키는 테이블 위 좌표
+    var r = $('table3d').getBoundingClientRect();
+    G.ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+    G.ray.setFromCamera(G.ndc, G.cam);
+    var o = G.ray.ray.origin, d = G.ray.ray.direction, py = TABLE_Y + S.R * U;
+    if (Math.abs(d.y) < 1e-6) return null;
+    var t = (py - o.y) / d.y;
+    if (t <= 0) return null;
+    return { x: (o.x + d.x * t) / U + TW / 2, y: (o.z + d.z * t) / U + TH / 2 };
   }
   function pushOut() { // 당구대와 벽을 뚫고 지나가지 못한다
     var hx = CW * U / 2 + 0.3, hz = CH * U / 2 + 0.3, p = G.pos;
@@ -1224,6 +1582,13 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     cv3.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
     cv3.addEventListener('pointerdown', function (ev) {
       ev.preventDefault();
+      if (S.view === '25') {
+        if (ev.button !== 0) return;
+        G.drag25 = true;
+        try { cv3.setPointerCapture(ev.pointerId); } catch (e) {}
+        var pt = pick25(ev); if (pt) tableDown(pt.x, pt.y);
+        return;
+      }
       if (ev.button === 2) { toggleStance(); return; }
       if (ev.button !== 0) return;
       if (ev.pointerType === 'mouse' && !document.pointerLockElement && cv3.requestPointerLock) {
@@ -1233,11 +1598,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       G.btn = true;
       if (G.stance && canAct() && !S.moving) { G.stroking = true; G.samples = []; G.maxD = G.d; }
     });
-    var release = function () { G.btn = false; G.stroking = false; };
+    var release = function () { G.btn = false; G.stroking = false; G.drag25 = false; handDrag = false; };
     cv3.addEventListener('pointerup', function (ev) { if (ev.button === 0) release(); });
     cv3.addEventListener('pointercancel', release);
     document.addEventListener('pointerlockchange', function () { G.locked = document.pointerLockElement === cv3; if (!G.locked) release(); });
     cv3.addEventListener('pointermove', function (ev) {
+      if (S.view === '25') {
+        if (G.drag25) { var pt = pick25(ev); if (pt) tableMove(pt.x, pt.y); }
+        return;
+      }
       var mx = clampN(ev.movementX || 0, -150, 150), my = clampN(ev.movementY || 0, -150, 150);
       if (G.stance) {
         if (G.stroking) { // 아래로 당기면 큐가 물러나고, 위로 밀면 나아간다. 공에 닿는 순간의 속도가 힘이다
@@ -1266,6 +1635,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       var tag = ev.target && ev.target.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
       if (ev.code === 'KeyE') { if (!ev.repeat) toggleStance(); ev.preventDefault(); return; }
+      if (ev.code === 'KeyF') { // 파울 뒤 손에 든 수구를 내 앞 테이블 위에 놓는다
+        if (!ev.repeat && S.hand && canAct() && !S.moving && !S.over && !G.stance) {
+          if (!placeCue((G.pos.x + Math.cos(G.yaw) * 0.9) / U + TW / 2, (G.pos.z + Math.sin(G.yaw) * 0.9) / U + TH / 2)) note3d('그 자리에는 놓을 수 없습니다.');
+        }
+        ev.preventDefault(); return;
+      }
       if (/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right))$/.test(ev.code)) {
         G.keys[ev.code] = true;
         if (ev.code.indexOf('Shift') !== 0) ev.preventDefault();
@@ -1273,12 +1648,21 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     });
     document.addEventListener('keyup', function (ev) { G.keys[ev.code] = false; });
     window.addEventListener('blur', function () { G.keys = {}; release(); });
+    Array.prototype.forEach.call(document.querySelectorAll('#cams25 button'), function (btn) {
+      btn.addEventListener('click', function () {
+        G.cam25 = +btn.getAttribute('data-cam'); G.blendUntil = performance.now() + 700;
+        Array.prototype.forEach.call(document.querySelectorAll('#cams25 button'), function (o) { o.setAttribute('aria-pressed', o === btn); });
+      });
+    });
   }
   function update3d(dt) {
-    var now = performance.now(), k = G.keys, c = cueBall(), bx = wx(c.x), bz = wz(c.y), Rw = S.R * U, by = TABLE_Y + Rw;
+    var now = performance.now(), k = G.keys, v25 = S.view === '25', mine = canAct(), idle = !S.moving && !S.over;
+    var c = cueBall(), bx = wx(c.x), bz = wz(c.y), Rw = S.R * U, by = TABLE_Y + Rw, ly = TABLE_Y + 0.004;
     var shift = k.ShiftLeft || k.ShiftRight, side = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
-    if (G.stance && (S.moving || S.over || !canAct())) exitStance();
-    if (G.stance) {
+    theme3d();
+    if (G.stance && (v25 || S.moving || S.over || !mine)) exitStance();
+    if (v25) G.moving = false;
+    else if (G.stance) {
       if (side && !G.stroking) { G.dir += side * (shift ? 0.1 : 0.8) * dt; S.angle = G.dir; publishAim(); }
       S.angle = G.dir;
       if (!G.stroking) G.d += (REST - G.d) * Math.min(1, dt * 10);
@@ -1295,64 +1679,86 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       }
     }
 
-    // 캐릭터
-    G.ch.position.set(G.pos.x, 0, G.pos.z); G.ch.rotation.y = Math.PI / 2 - G.face;
-    var sw = G.moving ? Math.sin(G.walkT * 9) * 0.55 : 0;
-    G.legL.rotation.x = sw; G.legR.rotation.x = -sw; G.armL.rotation.x = -sw * 0.6;
-    G.opacity += ((G.stance ? 0.1 : 1) - G.opacity) * Math.min(1, dt * 8);
-    var tr = G.opacity < 0.98;
-    G.chMats.forEach(function (m) {
-      if (m.transparent !== tr) { m.transparent = tr; m.needsUpdate = true; }
-      m.opacity = tr ? G.opacity : 1; m.depthWrite = G.opacity > 0.6;
-    });
-    G.heldCue.visible = !G.stance;
+    // 캐릭터 (2.5D에서는 없다)
+    G.ch.visible = !v25;
+    G.lampParts.forEach(function (m) { m.visible = !v25; }); // 내려다볼 때는 등갓이 시야를 가린다
+    if (!v25) {
+      G.ch.position.set(G.pos.x, 0, G.pos.z); G.ch.rotation.y = Math.PI / 2 - G.face;
+      var sw = G.moving ? Math.sin(G.walkT * 9) * 0.55 : 0;
+      G.legL.rotation.x = sw; G.legR.rotation.x = -sw; G.armL.rotation.x = -sw * 0.6;
+      G.opacity += ((G.stance ? 0.1 : 1) - G.opacity) * Math.min(1, dt * 8);
+      var tr = G.opacity < 0.98;
+      G.chMats.forEach(function (m) {
+        if (m.transparent !== tr) { m.transparent = tr; m.needsUpdate = true; }
+        m.opacity = tr ? G.opacity : 1; m.depthWrite = G.opacity > 0.6;
+      });
+      G.heldCue.visible = !G.stance;
+    }
 
-    // 공
-    ['w', 'y', 'r1', 'r2'].forEach(function (id) {
-      var m = G.balls[id], b = null;
-      S.balls.forEach(function (q) { if (q.id === id) b = q; });
-      m.visible = !!b;
-      if (b) { m.position.set(wx(b.x), by, wz(b.y)); m.scale.setScalar(Rw); }
+    // 공: 굴러간 만큼 실제로 돌린다
+    var id;
+    for (id in G.balls) G.balls[id].visible = false;
+    S.balls.forEach(function (b) {
+      if (b.off) return;
+      var m = ballMesh(b.id), x = wx(b.x), z = wz(b.y), u = m.userData;
+      if (u.lx !== null) {
+        var mdx = x - u.lx, mdz = z - u.lz, md = Math.hypot(mdx, mdz);
+        if (md > 1e-6 && md < 0.3) { G.v1.set(mdz / md, 0, -mdx / md); m.rotateOnWorldAxis(G.v1, md / Rw); }
+      }
+      u.lx = x; u.lz = z;
+      m.visible = true; m.position.set(x, by, z); m.scale.setScalar(Rw);
     });
-    G.turnRing.visible = !S.moving && !S.over;
-    G.turnRing.position.set(bx, TABLE_Y + 0.001, bz); G.turnRing.scale.setScalar(Rw);
+    G.turnRing.visible = idle; G.turnRing.position.set(bx, TABLE_Y + 0.001, bz); G.turnRing.scale.setScalar(Rw);
+    G.handRing.visible = idle && S.hand; G.handRing.position.set(bx, TABLE_Y + 0.0012, bz); G.handRing.scale.setScalar(Rw);
 
-    // 큐: 내가 잡았을 때는 스트로크대로, 상대나 AI 차례에는 그쪽 조준대로 보여 준다
-    var showCue = !S.moving && !S.over && (G.stance || !canAct());
+    // 큐: 3D에서 내가 잡았을 때는 스트로크대로, 그 밖에는 조준 방향과 힘대로 보여 준다
+    var showCue = idle && (v25 || G.stance || !mine);
     G.cue.visible = showCue;
     if (showCue) {
-      var a = S.angle, dxh = Math.cos(a), dzh = Math.sin(a), tip = G.stance ? S.tip : { x: 0, y: 0 };
+      var a = S.angle, dxh = Math.cos(a), dzh = Math.sin(a), tip = (v25 ? mine : G.stance) ? S.tip : { x: 0, y: 0 };
       var ox = tip.x * Rw * 0.55, oy = tip.y * Rw * 0.55, back = Math.sqrt(Math.max(0, Rw * Rw - ox * ox - oy * oy));
-      var gap = G.stance ? Math.max(0, G.d) : 0.05 + S.power * 0.002, el = 0.09;
+      var gap = (!v25 && G.stance) ? Math.max(0, G.d) : 0.05 + S.power * 0.002, el = 0.09;
       G.v1.set(dxh * Math.cos(el), -Math.sin(el), dzh * Math.cos(el));
       G.cue.position.set(bx - dzh * ox - dxh * back - G.v1.x * gap, by + oy - G.v1.y * gap, bz + dxh * ox - dzh * back - G.v1.z * gap);
       G.cue.quaternion.setFromUnitVectors(G.up, G.v1);
     }
 
-    // 조준선
-    G.line.visible = G.objLine.visible = G.ghost.visible = false;
-    if (S.aimLine && G.stance && !S.moving) {
-      var cx = c.x, cy = c.y, ddx = Math.cos(G.dir), ddy = Math.sin(G.dir), P = G.linePos, ly = TABLE_Y + 0.004, n = 1, h = null;
-      P[0] = bx; P[1] = ly; P[2] = bz;
+    // 조준선, 또는 초보 모드의 예상선(흰 띠: 수구, 파란 띠: 처음 맞은 공)
+    var lines = idle && (v25 || G.stance);
+    G.rbAim.mesh.visible = G.rbObj.mesh.visible = G.rbCue.mesh.visible = G.rbBlue.mesh.visible = G.ghost.visible = G.blueEnd.visible = false;
+    if (lines && S.beginner) {
+      var pr = predict();
+      if (G.predKey !== pr.key) { G.predKey = pr.key; G.rbCue.set(pr.cue, ly); G.rbBlue.set(pr.obj, ly + 0.001); }
+      G.rbCue.mesh.visible = G.rbCue.n > 1; G.rbBlue.mesh.visible = G.rbBlue.n > 1;
+      if (pr.hit) { G.ghost.visible = true; G.ghost.position.set(wx(pr.hit[0]), ly, wz(pr.hit[1])); G.ghost.scale.setScalar(Rw); }
+      if (pr.obj.length > 1) {
+        var pe = pr.obj[pr.obj.length - 1];
+        G.blueEnd.visible = true; G.blueEnd.position.set(wx(pe[0]), ly + 0.002, wz(pe[1])); G.blueEnd.scale.setScalar(Rw * (pr.potted ? 0.75 : 0.42));
+      }
+    } else if (lines && S.aimLine) {
+      var cx = c.x, cy = c.y, ddx = Math.cos(S.angle), ddy = Math.sin(S.angle), pts = [[cx, cy]], h = null;
       for (var seg = 0; seg < 3; seg++) {
         h = cast(cx, cy, ddx, ddy, c.id); if (!h) break;
-        P[n * 3] = wx(h.x); P[n * 3 + 1] = ly; P[n * 3 + 2] = wz(h.y); n++;
+        pts.push([h.x, h.y]);
         if (h.ball) break;
         if (h.wall === 'x') ddx = -ddx; else ddy = -ddy;
         cx = h.x; cy = h.y;
       }
-      G.line.geometry.setDrawRange(0, n); G.line.geometry.attributes.position.needsUpdate = true; G.line.visible = n > 1;
+      G.rbAim.set(pts, ly);
       if (h) { G.ghost.visible = true; G.ghost.position.set(wx(h.x), ly, wz(h.y)); G.ghost.scale.setScalar(Rw); }
       if (h && h.ball) {
-        var nx = (h.ball.x - h.x) / (2 * S.R), ny = (h.ball.y - h.y) / (2 * S.R), dn = ddx * nx + ddy * ny, O = G.objPos, len = 40 + 110 * dn;
-        O[0] = wx(h.ball.x); O[1] = ly; O[2] = wz(h.ball.y); O[3] = wx(h.ball.x + nx * len); O[4] = ly; O[5] = wz(h.ball.y + ny * len);
-        G.objLine.geometry.attributes.position.needsUpdate = true; G.objLine.visible = true;
+        var nx = (h.ball.x - h.x) / (2 * S.R), ny = (h.ball.y - h.y) / (2 * S.R), len = 40 + 110 * (ddx * nx + ddy * ny);
+        G.rbObj.set([[h.ball.x, h.ball.y], [h.ball.x + nx * len, h.ball.y + ny * len]], ly);
       }
     }
 
-    // 카메라: 걸을 때는 어깨 너머, 큐를 잡으면 큐 뒤에서 낮게 공을 본다
-    var tp = G.v2, tl = G.v3;
-    if (G.stance) {
+    // 카메라: 2.5D는 고정된 자리에서 내려다보고, 3D는 어깨 너머 또는 큐 뒤에서 본다
+    var tp = G.v2, tl = G.v3, fov = v25 ? 45 : 55;
+    if (G.cam.fov !== fov) { G.cam.fov = fov; G.cam.updateProjectionMatrix(); }
+    if (v25) {
+      var pc = CAMS[G.cam25];
+      tp.set(pc.p[0], pc.p[1], pc.p[2]); tl.set(pc.l[0], pc.l[1], pc.l[2]);
+    } else if (G.stance) {
       tp.set(bx - Math.cos(G.dir) * 0.95, by + 0.33, bz - Math.sin(G.dir) * 0.95);
       tl.set(bx + Math.cos(G.dir) * 0.6, by - 0.02, bz + Math.sin(G.dir) * 0.6);
     } else {
@@ -1366,16 +1772,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     G.cam.position.copy(G.camPos); G.cam.lookAt(G.camLook);
 
     // 화면 위 안내
-    var pr;
-    if (S.over) pr = '게임이 끝났습니다. 새 게임을 눌러 주세요.';
-    else if (S.moving) pr = '공이 구르는 중…';
-    else if (!canAct()) pr = '지금은 칠 수 없습니다 (상대 차례이거나 친구를 기다리는 중). W A S D로 걸어 다닐 수 있습니다.';
-    else if (G.stance) pr = G.stroking ? '아래로 당겼다가 위로 밀어 치세요. 미는 속도가 힘입니다.'
+    var msg3;
+    if (S.over) msg3 = '게임이 끝났습니다. 새 게임을 눌러 주세요.';
+    else if (S.moving) msg3 = '공이 구르는 중…';
+    else if (!mine) msg3 = '지금은 칠 수 없습니다 (상대 차례이거나 친구를 기다리는 중).' + (v25 ? '' : ' W A S D로 걸어 다닐 수 있습니다.');
+    else if (v25) msg3 = '테이블을 누르거나 드래그해 조준 · 힘과 샷은 아래에서' + (S.hand ? ' · 수구를 끌어서 옮길 수 있습니다' : '');
+    else if (G.stance) msg3 = G.stroking ? '아래로 당겼다가 위로 밀어 치세요. 미는 속도가 힘입니다.'
       : '마우스: 당점 · A D: 조준 (Shift 미세) · 좌클릭 누른 채 당겼다 밀기: 샷 · E: 큐 놓기';
-    else pr = 'W A S D: 걷기 · 마우스: 시점 · 수구 근처에서 E 또는 우클릭: 큐 잡기' + (G.locked ? '' : ' · 화면을 클릭하면 마우스가 고정됩니다');
-    if (pr !== G.prompt) { G.prompt = pr; $('prompt3d').textContent = pr; }
+    else msg3 = 'W A S D: 걷기 · 마우스: 시점 · 수구 근처에서 E 또는 우클릭: 큐 잡기' + (S.hand ? ' · F: 수구를 내 앞에 놓기' : '') + (G.locked ? '' : ' · 화면을 클릭하면 마우스가 고정됩니다');
+    if (msg3 !== G.prompt) { G.prompt = msg3; $('prompt3d').textContent = msg3; }
     var showNote = now < G.noteUntil;
-    if ($('note3d').hidden === showNote) { $('note3d').hidden = !showNote; }
+    if ($('note3d').hidden === showNote) $('note3d').hidden = !showNote;
     if (showNote) $('note3d').textContent = G.note;
     $('pull3d').style.width = (G.stance ? clampN((G.d - REST) / (MAXPULL - REST), 0, 1) * 100 : 0) + '%';
     var lp = G.lastPower ? '마지막 힘 ' + G.lastPower : '힘 –';
@@ -1384,16 +1791,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     G.renderer.render(G.scene, G.cam);
   }
   function setView(v) {
-    if (v === '3d' && !init3d()) { v = '2d'; say('이 브라우저에서는 3D 화면을 열 수 없습니다. 2D로 진행합니다.', 'foul'); }
+    if (v !== '2d' && !init3d()) { v = '2d'; say('이 브라우저에서는 입체 화면을 열 수 없습니다. 2D로 진행합니다.', 'foul'); }
     S.view = v;
     if (v !== '3d') {
       exitStance();
       if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) {} }
     }
-    document.body.classList.toggle('v3', v === '3d');
-    $('stage3d').hidden = v !== '3d';
-    $('view2d').setAttribute('aria-pressed', v === '2d'); $('view3d').setAttribute('aria-pressed', v === '3d');
-    if (v === '3d') { G.first = true; fit3d(); } else fit();
+    document.body.classList.toggle('v3', v !== '2d');
+    document.body.classList.toggle('v25', v === '25');
+    $('stage3d').hidden = v === '2d';
+    $('view2d').setAttribute('aria-pressed', v === '2d'); $('view25').setAttribute('aria-pressed', v === '25'); $('view3d').setAttribute('aria-pressed', v === '3d');
+    if (v !== '2d') { G.first = true; fit3d(); } else fit();
     savePrefs();
   }
 
@@ -1405,7 +1813,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       acc += el;
       while (acc >= DT && S.moving) { step(DT); acc -= DT; }
     } else acc = 0;
-    if (S.view === '3d' && G.ready) update3d(el); else draw();
+    if (S.view !== '2d' && G.ready) update3d(el); else draw();
     requestAnimationFrame(frame);
   }
   if (window.ResizeObserver) new ResizeObserver(fit).observe(cv); else window.addEventListener('resize', fit);
@@ -1415,10 +1823,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   showTip();
   $('view2d').addEventListener('click', function () { if (S.view !== '2d') setView('2d'); });
   $('view3d').addEventListener('click', function () { if (S.view !== '3d') setView('3d'); });
+  $('view25').addEventListener('click', function () { if (S.view !== '25') setView('25'); });
   $('sens').value = S.sens; G.sens = S.sens;
   $('sens').addEventListener('input', function () { G.sens = S.sens = +this.value; savePrefs(); });
   fit(); newGame(); draw();
-  if (S.view === '3d') setView('3d');
+  if (S.view !== '2d') setView(S.view);
   requestAnimationFrame(frame);
 })();
 </script>
