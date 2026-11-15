@@ -103,6 +103,20 @@ button:disabled, select:disabled { opacity: .45; cursor: default; }
 
 canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 1088 / 588; border-radius: 14px; touch-action: none; cursor: crosshair; box-shadow: 0 18px 40px rgba(0,0,0,.55); background: #5b3a22; }
 
+.stage3d { position: relative; border-radius: 14px; overflow: hidden; box-shadow: 0 18px 40px rgba(0,0,0,.55); background: #0f0c0a; }
+#table3d { aspect-ratio: 16 / 9; border-radius: 0; box-shadow: none; background: #0f0c0a; }
+.hud3d { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; }
+.hud3d p { margin: 0; }
+.hud3d .prompt { align-self: flex-start; max-width: 100%; background: rgba(21,17,14,.74); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.hud3d .note { background: var(--brass); color: var(--brass-ink); font-weight: 600; border-radius: 8px; padding: 8px 14px; margin-top: auto; }
+.hud3d .strokebar { margin-top: auto; display: flex; align-items: center; gap: 10px; background: rgba(21,17,14,.74); border-radius: 8px; padding: 6px 12px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.hud3d .note:not([hidden]) + .strokebar { margin-top: 0; }
+.hud3d .bar { width: min(180px, 30vw); height: 8px; border-radius: 4px; background: var(--hall); overflow: hidden; }
+.hud3d .bar i { display: block; height: 100%; width: 0; background: var(--brass); }
+.hint3d { flex: 1 1 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.hint3d input { accent-color: var(--brass); width: 140px; }
+body.v3 #table, body.v3 .power, body.v3 .shoot, body.v3 .hint2d { display: none; }
+body:not(.v3) .only3d { display: none; }
 .cue { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
 .tipbox { display: flex; align-items: center; gap: 12px; }
 .tip { position: relative; flex: none; width: 84px; height: 84px; border-radius: 50%; touch-action: none; cursor: crosshair;
@@ -144,6 +158,10 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       <p class="rule" id="rule"></p>
     </div>
     <div class="controls">
+      <div class="seg" role="group" aria-label="화면">
+        <button type="button" id="view2d" aria-pressed="true">2D</button>
+        <button type="button" id="view3d" aria-pressed="false">3D</button>
+      </div>
       <div class="seg" role="group" aria-label="게임 종류">
         <button type="button" id="mode3" aria-pressed="true">3구</button>
         <button type="button" id="mode4" aria-pressed="false">4구</button>
@@ -209,6 +227,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   </section>
 
   <canvas id="table" aria-label="당구대. 드래그해서 조준합니다."></canvas>
+  <div class="stage3d" id="stage3d" hidden>
+    <canvas id="table3d" aria-label="3D 당구장. 캐릭터를 움직여서 칩니다."></canvas>
+    <div class="hud3d">
+      <p class="prompt" id="prompt3d"></p>
+      <p class="note" id="note3d" hidden></p>
+      <div class="strokebar"><span>큐 당김</span><div class="bar"><i id="pull3d"></i></div><span id="lastPow3d">힘 –</span></div>
+    </div>
+  </div>
 
   <section class="cue" aria-label="큐 조작">
     <div class="tipbox">
@@ -225,10 +251,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       <output id="powerOut" for="power">50</output>
     </div>
     <button type="button" class="shoot" id="shoot">샷</button>
-    <p class="hint">테이블을 누르거나 드래그해 조준합니다. <kbd>←</kbd> <kbd>→</kbd> 미세 조준 (<kbd>Shift</kbd>와 함께 더 세밀하게), <kbd>↑</kbd> <kbd>↓</kbd> 힘, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 당점, <kbd>Space</kbd> 샷. 당점을 위로 두면 밀어치기, 아래로 두면 끌어치기, 좌우로 두면 쿠션에서 꺾이는 회전이 걸립니다. 조준선은 무회전 기준입니다.</p>
+    <p class="hint hint2d">테이블을 누르거나 드래그해 조준합니다. <kbd>←</kbd> <kbd>→</kbd> 미세 조준 (<kbd>Shift</kbd>와 함께 더 세밀하게), <kbd>↑</kbd> <kbd>↓</kbd> 힘, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 당점, <kbd>Space</kbd> 샷. 당점을 위로 두면 밀어치기, 아래로 두면 끌어치기, 좌우로 두면 쿠션에서 꺾이는 회전이 걸립니다. 조준선은 무회전 기준입니다.</p>
+    <div class="hint3d only3d">
+      <label class="field" for="sens">마우스 감도 <input type="range" id="sens" min="0.4" max="2.5" step="0.1" value="1"></label>
+      <p class="hint">화면을 클릭하면 마우스가 고정됩니다(Esc로 풀기). <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>로 걷고 마우스로 둘러봅니다. 수구 근처에서 <kbd>E</kbd>나 우클릭으로 큐를 잡으면 캐릭터가 투명해지고 큐 뒤에서 공을 봅니다. 이때 마우스로 당점을, <kbd>A</kbd> <kbd>D</kbd>로 조준 방향을 맞춥니다(<kbd>Shift</kbd>는 미세 조정). 좌클릭을 누른 채 마우스를 아래로 당겼다가 위로 밀면 샷이고, 미는 속도가 힘입니다.</p>
+    </div>
   </section>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <script>
 (function () {
@@ -245,7 +276,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
             moving: false, shot: null, over: false, R: 10.8,
             vsAI: false, level: 'normal', aiToken: 0, humanPower: 50,
             online: true, gid: '', n: 0, shotMine: true,
-            tip: { x: 0, y: 0 } }; // 당점: x 오른쪽(+), y 위쪽(+), 반지름 1 안
+            tip: { x: 0, y: 0 }, view: '2d', sens: 1 }; // 당점: x 오른쪽(+), y 위쪽(+), 반지름 1 안
   // 온라인 대결: 같은 링크를 연 사람끼리 presence(각자의 현재 상태)만으로 샷과 결과를 맞춘다.
   var NET = { room: null, code: null, seat: 0, opp: null, confirmed: 0, fresh: false, joining: false, connected: false, note: '' };
   var LIVE = true; // false면 AI가 머릿속으로 샷을 시뮬레이션하는 중
@@ -260,9 +291,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (typeof saved.online === 'boolean') S.online = saved.online;
     if (S.vsAI) S.online = false;
     if (['easy', 'normal', 'hard'].indexOf(saved.level) >= 0) S.level = saved.level;
+    if (saved.view === '3d') S.view = '3d';
+    if (typeof saved.sens === 'number' && saved.sens >= 0.4 && saved.sens <= 2.5) S.sens = saved.sens;
   } catch (e) {}
   function savePrefs() {
-    try { localStorage.setItem('carom-prefs', JSON.stringify({ mode: S.mode, aimLine: S.aimLine, threeC: S.threeC, sound: S.sound, target: S.target, vsAI: S.vsAI, online: S.online, level: S.level })); } catch (e) {}
+    try { localStorage.setItem('carom-prefs', JSON.stringify({ mode: S.mode, aimLine: S.aimLine, threeC: S.threeC, sound: S.sound, target: S.target, vsAI: S.vsAI, online: S.online, level: S.level, view: S.view, sens: S.sens })); } catch (e) {}
   }
   function aiTurnNow() { return S.vsAI && S.turn === 1; }
   function canAct() {
@@ -1006,6 +1039,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   $('newGame').addEventListener('click', newGame);
 
   document.addEventListener('keydown', function (ev) {
+    if (S.view === '3d') return;
     var tag = ev.target && ev.target.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (!canAct()) return;
@@ -1026,6 +1060,343 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     if (used) { ev.preventDefault(); publishAim(); }
   });
 
+  // ---------- 3D 모드 ----------
+  // 물리와 규칙은 2D와 같고, 보는 방법과 치는 방법만 다르다: 캐릭터로 걸어가 큐를 잡고, 마우스를 당겼다 미는 속도로 힘을 정한다.
+  var U = 0.002844, TABLE_Y = 0.8, REST = 0.05, MAXPULL = 0.42, REACH = 2.1;
+  var G = { ready: false, failed: false, pos: { x: -0.71, z: 1.5 }, yaw: -Math.PI / 2, pitch: 0.38, face: -Math.PI / 2, walkT: 0, moving: false,
+            stance: false, dir: 0, d: REST, stroking: false, samples: [], maxD: 0, lastPower: 0, btn: false,
+            keys: {}, sens: 1, locked: false, note: '', noteUntil: 0, blendUntil: 0, opacity: 1, balls: {}, first: true, prompt: '' };
+  function wx(x) { return (x - TW / 2) * U; }
+  function wz(y) { return (y - TH / 2) * U; }
+  function note3d(t) { G.note = t; G.noteUntil = performance.now() + 2200; }
+
+  function init3d() {
+    if (G.ready) return true;
+    if (G.failed || !window.THREE) return false;
+    var T = window.THREE, cv3 = $('table3d');
+    try { G.renderer = new T.WebGLRenderer({ canvas: cv3, antialias: true }); } catch (e) { G.failed = true; return false; }
+    var r = G.renderer;
+    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    r.shadowMap.enabled = true; r.shadowMap.type = T.PCFSoftShadowMap; r.outputEncoding = T.sRGBEncoding;
+    var scene = G.scene = new T.Scene();
+    scene.background = new T.Color(0x0f0c0a); scene.fog = new T.Fog(0x0f0c0a, 8, 18);
+    G.cam = new T.PerspectiveCamera(55, 16 / 9, 0.03, 40);
+    G.camPos = new T.Vector3(); G.camLook = new T.Vector3(); G.v1 = new T.Vector3(); G.v2 = new T.Vector3(); G.v3 = new T.Vector3(); G.up = new T.Vector3(0, 1, 0);
+    function mat(color, rough, extra) {
+      var m = new T.MeshStandardMaterial({ color: color, roughness: rough === undefined ? 0.8 : rough, metalness: 0 });
+      m.color.convertSRGBToLinear(); // 화면 출력이 sRGB라서, 지정한 색이 그대로 보이게 선형으로 바꿔 둔다
+      if (extra) for (var k in extra) m[k] = extra[k];
+      return m;
+    }
+    function add(geo, material, x, y, z, cast, parent) {
+      var m = new T.Mesh(geo, material); m.position.set(x, y, z);
+      m.castShadow = cast !== false; m.receiveShadow = true; (parent || scene).add(m); return m;
+    }
+
+    // 조명: 테이블 위 등 하나가 그림자를 만들고, 벽등이 방을 은은하게 밝힌다
+    scene.add(new T.HemisphereLight(0xfff1dc, 0x241a12, 0.55));
+    var lamp = new T.SpotLight(0xfff2d8, 1.5, 10, 1.0, 0.55, 1);
+    lamp.position.set(0, 2.3, 0); lamp.target.position.set(0, TABLE_Y, 0);
+    lamp.castShadow = true; lamp.shadow.mapSize.set(1024, 1024); lamp.shadow.camera.near = 0.4; lamp.shadow.camera.far = 6; lamp.shadow.bias = -0.0008;
+    scene.add(lamp); scene.add(lamp.target);
+    add(new T.BoxGeometry(2.3, 0.1, 0.55), mat(0x1c3f2b, 0.6), 0, 2.43, 0, false);
+    add(new T.BoxGeometry(2.1, 0.02, 0.4), mat(0xfff2d8, 1, { emissive: new T.Color(0xfff2d8), emissiveIntensity: 1 }), 0, 2.37, 0, false);
+    [[-6.3, -2.5], [-6.3, 2.5], [6.3, -2.5], [6.3, 2.5]].forEach(function (p) {
+      var pl = new T.PointLight(0xffc98a, 0.6, 8, 1.5); pl.position.set(p[0] * 0.93, 2.2, p[1]); scene.add(pl);
+      add(new T.SphereGeometry(0.09, 12, 8), mat(0xffd9a6, 1, { emissive: new T.Color(0xffb866), emissiveIntensity: 1 }), p[0], 2.2, p[1], false);
+    });
+
+    // 방
+    add(new T.PlaneGeometry(13, 11), mat(0x2b1e15, 0.9), 0, 0, 0, false).rotation.x = -Math.PI / 2;
+    add(new T.PlaneGeometry(4.9, 3.5), mat(0x3b1c1f, 1), 0, 0.004, 0, false).rotation.x = -Math.PI / 2;
+    var wall = mat(0x2a1f18, 1);
+    add(new T.PlaneGeometry(13, 3.4), wall, 0, 1.7, -5.5, false);
+    add(new T.PlaneGeometry(13, 3.4), wall, 0, 1.7, 5.5, false).rotation.y = Math.PI;
+    add(new T.PlaneGeometry(11, 3.4), wall, -6.5, 1.7, 0, false).rotation.y = Math.PI / 2;
+    add(new T.PlaneGeometry(11, 3.4), wall, 6.5, 1.7, 0, false).rotation.y = -Math.PI / 2;
+
+    // 당구대
+    var PW = TW * U, PD = TH * U, cush = 11 * U, wood = (RAIL - 11) * U, woodM = mat(0x5b3a22, 0.55), cushM = mat(0x174d88, 0.95);
+    add(new T.BoxGeometry(PW + 2 * cush, 0.02, PD + 2 * cush), mat(0x1a5596, 0.95), 0, TABLE_Y - 0.01, 0, false);
+    [-1, 1].forEach(function (s) {
+      add(new T.BoxGeometry(PW + 2 * cush, 0.036, cush), cushM, 0, TABLE_Y + 0.018, s * (PD / 2 + cush / 2));
+      add(new T.BoxGeometry(cush, 0.036, PD), cushM, s * (PW / 2 + cush / 2), TABLE_Y + 0.018, 0);
+      add(new T.BoxGeometry(CW * U, 0.05, wood), woodM, 0, TABLE_Y + 0.015, s * (PD / 2 + cush + wood / 2));
+      add(new T.BoxGeometry(wood, 0.05, PD + 2 * cush), woodM, s * (PW / 2 + cush + wood / 2), TABLE_Y + 0.015, 0);
+    });
+    var dia = mat(0xefe6cf, 0.4), dg = new T.CylinderGeometry(0.007, 0.007, 0.002, 12), i;
+    for (i = 1; i < 8; i++) [-1, 1].forEach(function (s) { add(dg, dia, -PW / 2 + i * PW / 8, TABLE_Y + 0.0405, s * (PD / 2 + cush + wood / 2), false); });
+    for (i = 1; i < 4; i++) [-1, 1].forEach(function (s) { add(dg, dia, s * (PW / 2 + cush + wood / 2), TABLE_Y + 0.0405, -PD / 2 + i * PD / 4, false); });
+    add(new T.BoxGeometry(CW * U - 0.06, 0.2, CH * U - 0.06), mat(0x3f2716, 0.6), 0, TABLE_Y - 0.12, 0);
+    [-1.3, 0, 1.3].forEach(function (x) { [-0.62, 0.62].forEach(function (z) { add(new T.CylinderGeometry(0.075, 0.06, 0.58, 12), woodM, x, 0.29, z); }); });
+    var spotM = new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3 });
+    [-0.25, 0, 0.25].forEach(function (f) { var sp = new T.Mesh(new T.CircleGeometry(0.006, 12), spotM); sp.rotation.x = -Math.PI / 2; sp.position.set(f * PW, TABLE_Y + 0.0008, 0); scene.add(sp); });
+
+    // 공
+    var sg = new T.SphereGeometry(1, 36, 24), cols = { w: 0xf4f0e6, y: 0xf2c230, r1: 0xc8232c, r2: 0xc8232c };
+    ['w', 'y', 'r1', 'r2'].forEach(function (id) { G.balls[id] = add(sg, mat(cols[id], 0.12), 0, TABLE_Y, 0); });
+    G.turnRing = new T.Mesh(new T.RingGeometry(1.3, 1.5, 40), new T.MeshBasicMaterial({ color: 0xe3ab3d, transparent: true, opacity: 0.9, side: T.DoubleSide }));
+    G.turnRing.rotation.x = -Math.PI / 2; scene.add(G.turnRing);
+
+    // 큐: 그룹 원점이 팁 끝, 몸통은 -Y 쪽으로 뻗는다
+    function makeCue() {
+      var g = new T.Group();
+      add(new T.CylinderGeometry(0.006, 0.0062, 0.006, 12), mat(0x3b82c4, 0.9), 0, -0.003, 0, true, g);
+      add(new T.CylinderGeometry(0.0062, 0.0064, 0.012, 12), mat(0xf5efe2, 0.4), 0, -0.012, 0, true, g);
+      add(new T.CylinderGeometry(0.0064, 0.0105, 0.87, 12), mat(0xd9b77e, 0.45), 0, -0.453, 0, true, g);
+      add(new T.CylinderGeometry(0.0105, 0.0145, 0.58, 12), mat(0x2a1a12, 0.45), 0, -1.178, 0, true, g);
+      return g;
+    }
+    G.cue = makeCue(); scene.add(G.cue);
+
+    // 캐릭터: 조끼 입은 당구장 손님. 큐를 잡으면 투명해진다
+    var ch = G.ch = new T.Group(); scene.add(ch); G.chMats = [];
+    function cm(color, rough) { var m = mat(color, rough); G.chMats.push(m); return m; }
+    var denim = cm(0x27324a), vest = cm(0x7d2a2a), shirt = cm(0xe9e2d6), skin = cm(0xe0b48c, 0.7), hair = cm(0x2a1a12), shoe = cm(0x1a1310);
+    function limb(x, topY, len, rad, material) {
+      var g = new T.Group(); g.position.set(x, topY, 0);
+      add(new T.CylinderGeometry(rad, rad * 0.85, len, 10), material, 0, -len / 2, 0, true, g);
+      ch.add(g); return g;
+    }
+    G.legL = limb(-0.1, 0.86, 0.8, 0.075, denim); G.legR = limb(0.1, 0.86, 0.8, 0.075, denim);
+    add(new T.BoxGeometry(0.11, 0.06, 0.24), shoe, 0, -0.83, 0.05, true, G.legL);
+    add(new T.BoxGeometry(0.11, 0.06, 0.24), shoe, 0, -0.83, 0.05, true, G.legR);
+    add(new T.CylinderGeometry(0.17, 0.15, 0.56, 14), vest, 0, 1.14, 0, true, ch);
+    add(new T.SphereGeometry(0.17, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), shirt, 0, 1.42, 0, true, ch);
+    G.armL = limb(-0.235, 1.42, 0.56, 0.05, shirt); G.armR = limb(0.235, 1.42, 0.56, 0.05, shirt);
+    add(new T.SphereGeometry(0.115, 18, 14), skin, 0, 1.64, 0, true, ch);
+    add(new T.SphereGeometry(0.122, 18, 10, 0, Math.PI * 2, 0, Math.PI * 0.55), hair, 0, 1.655, -0.012, true, ch);
+    add(new T.SphereGeometry(0.014, 8, 6), hair, -0.042, 1.65, 0.105, false, ch);
+    add(new T.SphereGeometry(0.014, 8, 6), hair, 0.042, 1.65, 0.105, false, ch);
+    G.heldCue = makeCue(); G.heldCue.position.set(0.3, 1.5, 0.06); G.heldCue.rotation.z = -0.05; ch.add(G.heldCue);
+
+    // 조준선 (3D에서도 조준선 스위치를 따른다)
+    G.linePos = new Float32Array(3 * 6); G.objPos = new Float32Array(6);
+    var lg = new T.BufferGeometry(); lg.setAttribute('position', new T.BufferAttribute(G.linePos, 3));
+    G.line = new T.Line(lg, new T.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })); G.line.frustumCulled = false; scene.add(G.line);
+    var og = new T.BufferGeometry(); og.setAttribute('position', new T.BufferAttribute(G.objPos, 3));
+    G.objLine = new T.Line(og, new T.LineBasicMaterial({ color: 0xffd666 })); G.objLine.frustumCulled = false; scene.add(G.objLine);
+    G.ghost = new T.Mesh(new T.RingGeometry(0.86, 1, 40), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, side: T.DoubleSide }));
+    G.ghost.rotation.x = -Math.PI / 2; scene.add(G.ghost);
+
+    bind3d(cv3);
+    if (window.ResizeObserver) new ResizeObserver(fit3d).observe(cv3); else window.addEventListener('resize', fit3d);
+    G.ready = true;
+    return true;
+  }
+  function fit3d() {
+    if (!G.renderer) return;
+    var w = $('table3d').clientWidth || 800, h = Math.round(w * 9 / 16);
+    G.renderer.setSize(w, h, false); G.cam.aspect = w / h; G.cam.updateProjectionMatrix();
+  }
+  function pushOut() { // 당구대와 벽을 뚫고 지나가지 못한다
+    var hx = CW * U / 2 + 0.3, hz = CH * U / 2 + 0.3, p = G.pos;
+    if (Math.abs(p.x) < hx && Math.abs(p.z) < hz) {
+      if (hx - Math.abs(p.x) < hz - Math.abs(p.z)) p.x = p.x < 0 ? -hx : hx; else p.z = p.z < 0 ? -hz : hz;
+    }
+    p.x = clampN(p.x, -5.8, 5.8); p.z = clampN(p.z, -4.8, 4.8);
+  }
+  function setShadow(on) { G.ch.traverse(function (o) { if (o.isMesh) o.castShadow = on; }); }
+  function toggleStance() {
+    if (G.stance) { exitStance(); return; }
+    if (S.over) return;
+    if (S.moving) { note3d('공이 멈춘 뒤에 큐를 잡을 수 있습니다.'); return; }
+    if (!canAct()) { note3d('지금은 내 차례가 아닙니다.'); return; }
+    var c = cueBall(), dx = wx(c.x) - G.pos.x, dz = wz(c.y) - G.pos.z;
+    if (Math.hypot(dx, dz) > REACH) { note3d('수구에 더 가까이 가세요.'); return; }
+    G.dir = Math.atan2(dz, dx); S.angle = G.dir;
+    G.stance = true; G.stroking = false; G.d = REST; G.blendUntil = performance.now() + 500;
+    setShadow(false); publishAim();
+  }
+  function exitStance() {
+    if (!G.stance) return;
+    var c = cueBall();
+    G.stance = false; G.stroking = false; G.d = REST; G.blendUntil = performance.now() + 500;
+    G.pos.x = wx(c.x) - Math.cos(G.dir) * 1.05; G.pos.z = wz(c.y) - Math.sin(G.dir) * 1.05; pushOut();
+    G.yaw = G.face = G.dir;
+    setShadow(true);
+  }
+  function fire3d(p) {
+    G.lastPower = p; S.power = p; S.angle = G.dir;
+    exitStance(); shoot(false);
+  }
+  function bind3d(cv3) {
+    cv3.addEventListener('contextmenu', function (ev) { ev.preventDefault(); });
+    cv3.addEventListener('pointerdown', function (ev) {
+      ev.preventDefault();
+      if (ev.button === 2) { toggleStance(); return; }
+      if (ev.button !== 0) return;
+      if (ev.pointerType === 'mouse' && !document.pointerLockElement && cv3.requestPointerLock) {
+        try { var p = cv3.requestPointerLock(); if (p && p.catch) p.catch(function () {}); } catch (e) {}
+      }
+      try { cv3.setPointerCapture(ev.pointerId); } catch (e) {}
+      G.btn = true;
+      if (G.stance && canAct() && !S.moving) { G.stroking = true; G.samples = []; G.maxD = G.d; }
+    });
+    var release = function () { G.btn = false; G.stroking = false; };
+    cv3.addEventListener('pointerup', function (ev) { if (ev.button === 0) release(); });
+    cv3.addEventListener('pointercancel', release);
+    document.addEventListener('pointerlockchange', function () { G.locked = document.pointerLockElement === cv3; if (!G.locked) release(); });
+    cv3.addEventListener('pointermove', function (ev) {
+      var mx = clampN(ev.movementX || 0, -150, 150), my = clampN(ev.movementY || 0, -150, 150);
+      if (G.stance) {
+        if (G.stroking) { // 아래로 당기면 큐가 물러나고, 위로 밀면 나아간다. 공에 닿는 순간의 속도가 힘이다
+          var t = performance.now();
+          G.d = Math.min(MAXPULL, G.d + my * 0.0011 * G.sens);
+          if (G.d > G.maxD) G.maxD = G.d;
+          G.samples.push({ t: t, d: G.d });
+          while (G.samples.length > 2 && t - G.samples[0].t > 90) G.samples.shift();
+          if (G.d <= 0) {
+            if (G.maxD < REST + 0.04) { G.d = 0.004; return; } // 먼저 뒤로 당겨야 한다
+            var o = G.samples[0], span = Math.max(0.016, (t - o.t) / 1000), v = (o.d - G.d) / span;
+            fire3d(clampN(Math.round(v / 3.2 * 100), 5, 100));
+          }
+        } else { // 큐를 잡은 상태에서 마우스는 당점을 옮긴다
+          var tx = S.tip.x + mx * 0.0045 * G.sens, ty = S.tip.y - my * 0.0045 * G.sens, dd = Math.hypot(tx, ty);
+          if (dd > 1) { tx /= dd; ty /= dd; }
+          S.tip = { x: tx, y: ty }; showTip();
+        }
+      } else if (G.locked || G.btn) {
+        G.yaw += mx * 0.0026 * G.sens;
+        G.pitch = clampN(G.pitch + my * 0.002 * G.sens, -0.05, 1.15);
+      }
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (S.view !== '3d') return;
+      var tag = ev.target && ev.target.tagName;
+      if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (ev.code === 'KeyE') { if (!ev.repeat) toggleStance(); ev.preventDefault(); return; }
+      if (/^(Key[WASD]|Arrow(Up|Down|Left|Right)|Shift(Left|Right))$/.test(ev.code)) {
+        G.keys[ev.code] = true;
+        if (ev.code.indexOf('Shift') !== 0) ev.preventDefault();
+      }
+    });
+    document.addEventListener('keyup', function (ev) { G.keys[ev.code] = false; });
+    window.addEventListener('blur', function () { G.keys = {}; release(); });
+  }
+  function update3d(dt) {
+    var now = performance.now(), k = G.keys, c = cueBall(), bx = wx(c.x), bz = wz(c.y), Rw = S.R * U, by = TABLE_Y + Rw;
+    var shift = k.ShiftLeft || k.ShiftRight, side = (k.KeyD || k.ArrowRight ? 1 : 0) - (k.KeyA || k.ArrowLeft ? 1 : 0);
+    if (G.stance && (S.moving || S.over || !canAct())) exitStance();
+    if (G.stance) {
+      if (side && !G.stroking) { G.dir += side * (shift ? 0.1 : 0.8) * dt; S.angle = G.dir; publishAim(); }
+      S.angle = G.dir;
+      if (!G.stroking) G.d += (REST - G.d) * Math.min(1, dt * 10);
+      G.pos.x = bx - Math.cos(G.dir) * 1.05; G.pos.z = bz - Math.sin(G.dir) * 1.05; G.face = G.dir; G.moving = false;
+    } else {
+      var fwd = (k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0);
+      G.moving = !!(fwd || side);
+      if (G.moving) {
+        var fx = Math.cos(G.yaw), fz = Math.sin(G.yaw), mvx = fx * fwd - fz * side, mvz = fz * fwd + fx * side;
+        var sp = (shift ? 3.6 : 2.2) * dt / Math.hypot(mvx, mvz);
+        G.pos.x += mvx * sp; G.pos.z += mvz * sp; pushOut();
+        var want = Math.atan2(mvz, mvx), da = Math.atan2(Math.sin(want - G.face), Math.cos(want - G.face));
+        G.face += da * Math.min(1, dt * 12); G.walkT += dt;
+      }
+    }
+
+    // 캐릭터
+    G.ch.position.set(G.pos.x, 0, G.pos.z); G.ch.rotation.y = Math.PI / 2 - G.face;
+    var sw = G.moving ? Math.sin(G.walkT * 9) * 0.55 : 0;
+    G.legL.rotation.x = sw; G.legR.rotation.x = -sw; G.armL.rotation.x = -sw * 0.6;
+    G.opacity += ((G.stance ? 0.1 : 1) - G.opacity) * Math.min(1, dt * 8);
+    var tr = G.opacity < 0.98;
+    G.chMats.forEach(function (m) {
+      if (m.transparent !== tr) { m.transparent = tr; m.needsUpdate = true; }
+      m.opacity = tr ? G.opacity : 1; m.depthWrite = G.opacity > 0.6;
+    });
+    G.heldCue.visible = !G.stance;
+
+    // 공
+    ['w', 'y', 'r1', 'r2'].forEach(function (id) {
+      var m = G.balls[id], b = null;
+      S.balls.forEach(function (q) { if (q.id === id) b = q; });
+      m.visible = !!b;
+      if (b) { m.position.set(wx(b.x), by, wz(b.y)); m.scale.setScalar(Rw); }
+    });
+    G.turnRing.visible = !S.moving && !S.over;
+    G.turnRing.position.set(bx, TABLE_Y + 0.001, bz); G.turnRing.scale.setScalar(Rw);
+
+    // 큐: 내가 잡았을 때는 스트로크대로, 상대나 AI 차례에는 그쪽 조준대로 보여 준다
+    var showCue = !S.moving && !S.over && (G.stance || !canAct());
+    G.cue.visible = showCue;
+    if (showCue) {
+      var a = S.angle, dxh = Math.cos(a), dzh = Math.sin(a), tip = G.stance ? S.tip : { x: 0, y: 0 };
+      var ox = tip.x * Rw * 0.55, oy = tip.y * Rw * 0.55, back = Math.sqrt(Math.max(0, Rw * Rw - ox * ox - oy * oy));
+      var gap = G.stance ? Math.max(0, G.d) : 0.05 + S.power * 0.002, el = 0.09;
+      G.v1.set(dxh * Math.cos(el), -Math.sin(el), dzh * Math.cos(el));
+      G.cue.position.set(bx - dzh * ox - dxh * back - G.v1.x * gap, by + oy - G.v1.y * gap, bz + dxh * ox - dzh * back - G.v1.z * gap);
+      G.cue.quaternion.setFromUnitVectors(G.up, G.v1);
+    }
+
+    // 조준선
+    G.line.visible = G.objLine.visible = G.ghost.visible = false;
+    if (S.aimLine && G.stance && !S.moving) {
+      var cx = c.x, cy = c.y, ddx = Math.cos(G.dir), ddy = Math.sin(G.dir), P = G.linePos, ly = TABLE_Y + 0.004, n = 1, h = null;
+      P[0] = bx; P[1] = ly; P[2] = bz;
+      for (var seg = 0; seg < 3; seg++) {
+        h = cast(cx, cy, ddx, ddy, c.id); if (!h) break;
+        P[n * 3] = wx(h.x); P[n * 3 + 1] = ly; P[n * 3 + 2] = wz(h.y); n++;
+        if (h.ball) break;
+        if (h.wall === 'x') ddx = -ddx; else ddy = -ddy;
+        cx = h.x; cy = h.y;
+      }
+      G.line.geometry.setDrawRange(0, n); G.line.geometry.attributes.position.needsUpdate = true; G.line.visible = n > 1;
+      if (h) { G.ghost.visible = true; G.ghost.position.set(wx(h.x), ly, wz(h.y)); G.ghost.scale.setScalar(Rw); }
+      if (h && h.ball) {
+        var nx = (h.ball.x - h.x) / (2 * S.R), ny = (h.ball.y - h.y) / (2 * S.R), dn = ddx * nx + ddy * ny, O = G.objPos, len = 40 + 110 * dn;
+        O[0] = wx(h.ball.x); O[1] = ly; O[2] = wz(h.ball.y); O[3] = wx(h.ball.x + nx * len); O[4] = ly; O[5] = wz(h.ball.y + ny * len);
+        G.objLine.geometry.attributes.position.needsUpdate = true; G.objLine.visible = true;
+      }
+    }
+
+    // 카메라: 걸을 때는 어깨 너머, 큐를 잡으면 큐 뒤에서 낮게 공을 본다
+    var tp = G.v2, tl = G.v3;
+    if (G.stance) {
+      tp.set(bx - Math.cos(G.dir) * 0.95, by + 0.33, bz - Math.sin(G.dir) * 0.95);
+      tl.set(bx + Math.cos(G.dir) * 0.6, by - 0.02, bz + Math.sin(G.dir) * 0.6);
+    } else {
+      var cfx = Math.cos(G.yaw), cfz = Math.sin(G.yaw), cp = Math.cos(G.pitch);
+      var sx = -cfz * 0.55, sz = cfx * 0.55; // 캐릭터가 공을 가리지 않게 오른쪽 어깨 너머에서 본다
+      tp.set(G.pos.x - cfx * 2.1 * cp + sx, 1.5 + 2.1 * Math.sin(G.pitch), G.pos.z - cfz * 2.1 * cp + sz);
+      tl.set(G.pos.x + cfx * 1.2 + sx, 1.2, G.pos.z + cfz * 1.2 + sz);
+    }
+    var kk = G.first ? 1 : 1 - Math.exp(-dt * (now < G.blendUntil ? 7 : 30)); G.first = false;
+    G.camPos.lerp(tp, kk); G.camLook.lerp(tl, kk);
+    G.cam.position.copy(G.camPos); G.cam.lookAt(G.camLook);
+
+    // 화면 위 안내
+    var pr;
+    if (S.over) pr = '게임이 끝났습니다. 새 게임을 눌러 주세요.';
+    else if (S.moving) pr = '공이 구르는 중…';
+    else if (!canAct()) pr = '지금은 칠 수 없습니다 (상대 차례이거나 친구를 기다리는 중). W A S D로 걸어 다닐 수 있습니다.';
+    else if (G.stance) pr = G.stroking ? '아래로 당겼다가 위로 밀어 치세요. 미는 속도가 힘입니다.'
+      : '마우스: 당점 · A D: 조준 (Shift 미세) · 좌클릭 누른 채 당겼다 밀기: 샷 · E: 큐 놓기';
+    else pr = 'W A S D: 걷기 · 마우스: 시점 · 수구 근처에서 E 또는 우클릭: 큐 잡기' + (G.locked ? '' : ' · 화면을 클릭하면 마우스가 고정됩니다');
+    if (pr !== G.prompt) { G.prompt = pr; $('prompt3d').textContent = pr; }
+    var showNote = now < G.noteUntil;
+    if ($('note3d').hidden === showNote) { $('note3d').hidden = !showNote; }
+    if (showNote) $('note3d').textContent = G.note;
+    $('pull3d').style.width = (G.stance ? clampN((G.d - REST) / (MAXPULL - REST), 0, 1) * 100 : 0) + '%';
+    var lp = G.lastPower ? '마지막 힘 ' + G.lastPower : '힘 –';
+    if ($('lastPow3d').textContent !== lp) $('lastPow3d').textContent = lp;
+
+    G.renderer.render(G.scene, G.cam);
+  }
+  function setView(v) {
+    if (v === '3d' && !init3d()) { v = '2d'; say('이 브라우저에서는 3D 화면을 열 수 없습니다. 2D로 진행합니다.', 'foul'); }
+    S.view = v;
+    if (v !== '3d') {
+      exitStance();
+      if (document.pointerLockElement) { try { document.exitPointerLock(); } catch (e) {} }
+    }
+    document.body.classList.toggle('v3', v === '3d');
+    $('stage3d').hidden = v !== '3d';
+    $('view2d').setAttribute('aria-pressed', v === '2d'); $('view3d').setAttribute('aria-pressed', v === '3d');
+    if (v === '3d') { G.first = true; fit3d(); } else fit();
+    savePrefs();
+  }
+
   // ---------- 루프 ----------
   var last = performance.now(), acc = 0;
   function frame(now) {
@@ -1034,7 +1405,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       acc += el;
       while (acc >= DT && S.moving) { step(DT); acc -= DT; }
     } else acc = 0;
-    draw();
+    if (S.view === '3d' && G.ready) update3d(el); else draw();
     requestAnimationFrame(frame);
   }
   if (window.ResizeObserver) new ResizeObserver(fit).observe(cv); else window.addEventListener('resize', fit);
@@ -1042,7 +1413,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   try { $('roomCode').value = localStorage.getItem('carom-code') || ''; } catch (e) {}
   if (S.online) getRoom();
   showTip();
+  $('view2d').addEventListener('click', function () { if (S.view !== '2d') setView('2d'); });
+  $('view3d').addEventListener('click', function () { if (S.view !== '3d') setView('3d'); });
+  $('sens').value = S.sens; G.sens = S.sens;
+  $('sens').addEventListener('input', function () { G.sens = S.sens = +this.value; savePrefs(); });
   fit(); newGame(); draw();
+  if (S.view === '3d') setView('3d');
   requestAnimationFrame(frame);
 })();
 </script>
