@@ -266,6 +266,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     </div>
     <button type="button" class="shoot" id="shoot">샷</button>
     <button type="button" class="ghost" id="undoBtn" disabled>치기 전으로 되돌리기 (Z)</button>
+    <p class="hint" id="legend" hidden>초보 모드 안내선: <b style="color:#ffb347">주황 선</b>은 내가 친 공(수구)이 가는 길이고, 끝의 점은 멈추는 자리입니다. 흰 원은 처음 맞는 자리입니다.</p>
     <p class="hint hint2d">테이블을 누르거나 드래그해 조준합니다. <kbd>←</kbd> <kbd>→</kbd> 미세 조준 (<kbd>Shift</kbd>와 함께 더 세밀하게), <kbd>↑</kbd> <kbd>↓</kbd> 힘, <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> 당점, <kbd>Space</kbd> 샷. 당점을 위로 두면 밀어치기, 아래로 두면 끌어치기, 좌우로 두면 쿠션에서 꺾이는 회전이 걸립니다. 조준선은 무회전 기준입니다.</p>
     <p class="hint only25">2.5D: 비스듬히 내려다보는 시점입니다. 조작은 2D와 같습니다. 테이블을 누르거나 드래그해 조준하고, 화면 오른쪽 위에서 보는 방향을 바꿉니다.</p>
     <div class="hint3d only3d">
@@ -286,7 +287,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   var COLORS = { w: ['#ffffff', '#f4f0e6', '#b9b2a2'], y: ['#fff3b0', '#f2c230', '#a97c0c'], r: ['#ff8a80', '#c8232c', '#6f0d14'] };
   var NAMES = ['1P', '2P'], CUE = ['w', 'y'];
   // 포켓볼(8볼): 수구 하나를 둘이 같이 쓰고, 공 id는 p1..p15
-  var POOL = 8, BLUE = '#6fd2ff';
+  var POOL = 8, BLUE = '#6fd2ff', ORANGE = '#ffb347'; // 예상선: 파랑은 맞은 공, 주황은 내가 친 공(수구)
   var PCOL = [null, '#f2c230', '#2456b8', '#c8232c', '#6a3fa0', '#e8792b', '#1f8a4c', '#7a2430', '#18181a'];
   var POCKETS = [[0, 0, 31], [TW, 0, 31], [0, TH, 31], [TW, TH, 31], [TW / 2, -4, 25], [TW / 2, TH + 4, 25]];
 
@@ -476,6 +477,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     $('p1s').textContent = S.over ? (win === 0 ? '승리' : '패배') : (S.turn === 0 ? '치는 중' : '대기');
     $('p2s').textContent = S.over ? (win === 1 ? '승리' : '패배') : (S.turn === 1 ? '치는 중' : '대기');
     $('shoot').disabled = S.moving || S.over || !canAct();
+    $('legend').hidden = !S.beginner;
     $('undoBtn').hidden = S.online; $('undoBtn').disabled = S.moving || !S.undo.length;
     $('powerOut').textContent = S.power;
   }
@@ -923,7 +925,6 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       if (!cueDone && !c.off && Math.hypot(c.x - lx, c.y - ly) > 4) {
         if (obj) after += Math.hypot(c.x - lx, c.y - ly);
         trace.cue.push([c.x, c.y]); lx = c.x; ly = c.y;
-        if (after > 700) cueDone = true; // 수구는 처음 맞힌 뒤 조금만 더 그린다 (끝까지 그리면 선이 너무 많다)
       }
       if (!obj && S.shot.hits.length) {
         var hid = S.shot.hits[0];
@@ -1180,19 +1181,18 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     g.addColorStop(0, c[0]); g.addColorStop(0.45, c[1]); g.addColorStop(1, c[2]);
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, R, 0, Math.PI * 2); ctx.fill();
   }
-  // 초보 모드: 실제로 굴려 본 결과를 그린다. 흰 점선은 수구, 파란 선은 처음 맞은 공이 가는 길.
+  // 초보 모드: 실제로 굴려 본 결과를 그린다. 주황 선은 내가 친 공(수구)이 멈출 때까지 가는 길.
   function drawPrediction() {
     var p = predict(), i;
     function path(pts) { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]); ctx.stroke(); }
     ctx.save(); ctx.lineCap = ctx.lineJoin = 'round';
-    if (p.cue.length > 1) { ctx.strokeStyle = 'rgba(255,255,255,.62)'; ctx.lineWidth = 1.6; ctx.setLineDash([6, 6]); path(p.cue); ctx.setLineDash([]); }
-    if (p.hit) { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(p.hit[0], p.hit[1], S.R, 0, Math.PI * 2); ctx.stroke(); }
-    if (p.obj.length > 1) {
-      var e = p.obj[p.obj.length - 1];
-      ctx.strokeStyle = 'rgba(0,20,60,.45)'; ctx.lineWidth = 5.5; path(p.obj);
-      ctx.strokeStyle = BLUE; ctx.lineWidth = 3; path(p.obj);
-      ctx.fillStyle = BLUE; dot(e[0], e[1], p.potted ? 7 : 4);
+    if (p.cue.length > 1) {
+      var ce = p.cue[p.cue.length - 1];
+      ctx.strokeStyle = 'rgba(40,20,0,.45)'; ctx.lineWidth = 5; path(p.cue);
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 2.6; path(p.cue);
+      if (!p.scratch) { ctx.fillStyle = ORANGE; dot(ce[0], ce[1], 4); }
     }
+    if (p.hit) { ctx.strokeStyle = 'rgba(255,255,255,.85)'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.arc(p.hit[0], p.hit[1], S.R, 0, Math.PI * 2); ctx.stroke(); }
     ctx.restore();
   }
   function drawCue() {
@@ -1489,10 +1489,12 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
     }
     G.rbAim = ribbon(8, 0xffffff, 0.85, 0.008);
     G.rbObj = ribbon(2, 0xffd666, 0.95, 0.01);
-    G.rbCue = ribbon(700, 0xffffff, 0.55, 0.007);
+    G.rbCue = ribbon(1400, 0xffb347, 0.95, 0.013);
     G.rbBlue = ribbon(700, 0x6fd2ff, 0.95, 0.016);
     G.blueEnd = new T.Mesh(new T.CircleGeometry(1, 24), new T.MeshBasicMaterial({ color: 0x6fd2ff, transparent: true, opacity: 0.95, depthWrite: false }));
     G.blueEnd.rotation.x = -Math.PI / 2; G.blueEnd.visible = false; scene.add(G.blueEnd);
+    G.cueEnd = new T.Mesh(new T.CircleGeometry(1, 24), new T.MeshBasicMaterial({ color: 0xffb347, transparent: true, opacity: 0.95, depthWrite: false }));
+    G.cueEnd.rotation.x = -Math.PI / 2; G.cueEnd.visible = false; scene.add(G.cueEnd);
 
     bind3d(cv3);
     if (window.ResizeObserver) new ResizeObserver(fit3d).observe(cv3); else window.addEventListener('resize', fit3d);
@@ -1723,17 +1725,17 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
       G.cue.quaternion.setFromUnitVectors(G.up, G.v1);
     }
 
-    // 조준선, 또는 초보 모드의 예상선(흰 띠: 수구, 파란 띠: 처음 맞은 공)
+    // 조준선, 또는 초보 모드의 예상선(주황 띠: 내가 친 공이 가는 길)
     var lines = idle && (v25 || G.stance);
-    G.rbAim.mesh.visible = G.rbObj.mesh.visible = G.rbCue.mesh.visible = G.rbBlue.mesh.visible = G.ghost.visible = G.blueEnd.visible = false;
+    G.rbAim.mesh.visible = G.rbObj.mesh.visible = G.rbCue.mesh.visible = G.rbBlue.mesh.visible = G.ghost.visible = G.blueEnd.visible = G.cueEnd.visible = false;
     if (lines && S.beginner) {
       var pr = predict();
-      if (G.predKey !== pr.key) { G.predKey = pr.key; G.rbCue.set(pr.cue, ly); G.rbBlue.set(pr.obj, ly + 0.001); }
-      G.rbCue.mesh.visible = G.rbCue.n > 1; G.rbBlue.mesh.visible = G.rbBlue.n > 1;
+      if (G.predKey !== pr.key) { G.predKey = pr.key; G.rbCue.set(pr.cue, ly); }
+      G.rbCue.mesh.visible = G.rbCue.n > 1;
       if (pr.hit) { G.ghost.visible = true; G.ghost.position.set(wx(pr.hit[0]), ly, wz(pr.hit[1])); G.ghost.scale.setScalar(Rw); }
-      if (pr.obj.length > 1) {
-        var pe = pr.obj[pr.obj.length - 1];
-        G.blueEnd.visible = true; G.blueEnd.position.set(wx(pe[0]), ly + 0.002, wz(pe[1])); G.blueEnd.scale.setScalar(Rw * (pr.potted ? 0.75 : 0.42));
+      if (pr.cue.length > 1 && !pr.scratch) {
+        var qe = pr.cue[pr.cue.length - 1];
+        G.cueEnd.visible = true; G.cueEnd.position.set(wx(qe[0]), ly + 0.002, wz(qe[1])); G.cueEnd.scale.setScalar(Rw * 0.42);
       }
     } else if (lines && S.aimLine) {
       var cx = c.x, cy = c.y, ddx = Math.cos(S.angle), ddy = Math.sin(S.angle), pts = [[cx, cy]], h = null;
